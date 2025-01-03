@@ -1,0 +1,10 @@
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore virtual environment
+venv/
+
+# Ignore raw data files
+data/amz/raw_data/Books_5.json.gz
+data/amz/raw_data/meta_Books.json.gz
