@@ -1,0 +1,4 @@
+    transformers>=4.22.2
+   numpy
+   torch>=1.10.0
+   scikit-learn
