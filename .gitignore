@@ -5,6 +5,19 @@ __pycache__/
 # Ignore virtual environment
 venv/
 
-# Ignore raw data files
-data/amz/raw_data/Books_5.json.gz
-data/amz/raw_data/meta_Books.json.gz
+# Ignore all data directories
+data/*/raw_data/
+data/*/proc_data/
+data/*/knowledge/
+
+# Ignore executables and system files
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Ignore large files
+*.gz
+*.pkl
+*.h5
+*.model
