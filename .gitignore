@@ -21,3 +21,4 @@ data/*/knowledge/
 *.pkl
 *.h5
 *.model
+.DS_Store

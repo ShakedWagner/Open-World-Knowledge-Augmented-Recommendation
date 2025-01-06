@@ -1,111 +1,66 @@
 import json
-from llamaapi import LlamaAPI
+import os
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
-# Initialize Llama API
-llama = LlamaAPI("<your_api_token>")
+# Initialize the tokenizer and model
+model_name = "meta-llama/Llama-3.1-70B"  # Example: Llama-2 7B
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForCausalLM.from_pretrained(model_name)
 
-def generate_knowledge(input_data, prompt_template):
-    # Create a prompt by inserting input data into the template
-    prompt = prompt_template.format(input_data=input_data)
-    
-    # Build the API request
-    api_request_json = {
-        "model": "llama3.1-70b",
-        "messages": [
-            {"role": "user", "content": prompt},
-        ],
-        "stream": False
-    }
-    
-    # Execute the Request
-    response = llama.run(api_request_json)
-    generated_text = response['choices'][0]['message']['content'].strip()
-    return generated_text
+def generate_knowledge(prompt):
+    # Tokenize the input prompt
+    inputs = tokenizer(prompt, return_tensors="pt")
+    # Generate text using the model
+    outputs = model.generate(**inputs, max_new_tokens=50)
+    # Decode the generated tokens to text
+    generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return generated_text.strip()
 
 def save_to_file(filename, content):
     with open(filename, 'w') as file:
         file.write(json.dumps(content, indent=2))
 
-def load_movielens_1m():
-    users = {}
-    items = {}
-    ratings = []
+def load_prompts(filename):
+    with open(filename, 'r') as file:
+        return json.load(file)
 
-    # Load users
-    with open('Open-World-Knowledge-Augmented-Recommendation/data/ml-1m/users.dat', 'r') as f:
-        for line in f:
-            user_id, gender, age, occupation, zip_code = line.strip().split('::')
-            users[user_id] = {
-                "gender": gender,
-                "age": age,
-                "occupation": occupation,
-                "zip_code": zip_code
-            }
+def main(user_prompt_file, item_prompt_file, user_knowledge_file, item_knowledge_file):
+    # Load prompts from JSON files
+    user_prompts = load_prompts(user_prompt_file)
+    item_prompts = load_prompts(item_prompt_file)
 
-    # Load movies
-    with open('Open-World-Knowledge-Augmented-Recommendation/data/ml-1m/movies.dat', 'r', encoding='latin-1') as f:
-        for line in f:
-            movie_id, title, genres = line.strip().split('::')
-            items[movie_id] = {
-                "title": title,
-                "genres": genres.split('|')
-            }
-
-    # Load ratings
-    with open('Open-World-Knowledge-Augmented-Recommendation/data/ml-1m/ratings.dat', 'r') as f:
-        for line in f:
-            user_id, movie_id, rating, timestamp = line.strip().split('::')
-            ratings.append({
-                "user_id": user_id,
-                "movie_id": movie_id,
-                "rating": rating,
-                "timestamp": timestamp
-            })
-
-    return users, items, ratings
-
-def main():
-    # Load MovieLens-1M dataset
-    users, items, ratings = load_movielens_1m()
-
-    # todo: rewrite as in the paper
-    user_prompt_template = "Given a user: {input_data}, with ratings: {ratings}, generate a knowledge about the user."
-    item_prompt_template = "Introduce a movie: {input_data}"
-
-    # Create dictionaries for users and items
+    # Create dictionaries for user and item knowledge
     user_knowledge_dict = {}
     item_knowledge_dict = {}
 
-    # Organize ratings by user
-    user_ratings = {}
-    for rating in ratings:
-        user_id = rating['user_id']
-        if user_id not in user_ratings:
-            user_ratings[user_id] = []
-        user_ratings[user_id].append(rating)
-
-    # Generate knowledge for each user
-    for user_id, user_data in users.items():
-        user_ratings_list = user_ratings.get(user_id, [])
-        user_knowledge = generate_knowledge(user_data, user_prompt_template.format(input_data=user_data, ratings=user_ratings_list))
+    # Generate knowledge for each user prompt
+    for user_id, prompt in user_prompts.items():
+        user_knowledge = generate_knowledge(prompt)
         user_knowledge_dict[user_id] = {
-            "prompt": user_prompt_template.format(input_data=user_data, ratings=user_ratings_list),
+            "prompt": prompt,
             "answer": user_knowledge
         }
 
-    # Generate knowledge for each item
-    for item_id, item_data in items.items():
-        item_knowledge = generate_knowledge(item_data, item_prompt_template)
+    # Generate knowledge for each item prompt
+    for item_id, prompt in item_prompts.items():
+        item_knowledge = generate_knowledge(prompt)
         item_knowledge_dict[item_id] = {
-            "prompt": item_prompt_template.format(input_data=item_data),
+            "prompt": prompt,
             "answer": item_knowledge
         }
 
     # Save to files
-    save_to_file('user_knowledge.json', user_knowledge_dict)
-    save_to_file('item_knowledge.json', item_knowledge_dict)
+    save_to_file(user_knowledge_file, user_knowledge_dict)
+    save_to_file(item_knowledge_file, item_knowledge_dict)
 
     print("Knowledge files generated successfully.")
 
 if __name__ == "__main__":
-    main()
+    DATA_DIR = '../data/'
+    PROCESSED_DIR = os.path.join(DATA_DIR, 'ml-1m', 'proc_data')
+    USER_PROMPT_FILE = os.path.join(PROCESSED_DIR, 'prompt.hist')
+    ITEM_PROMPT_FILE = os.path.join(PROCESSED_DIR, 'prompt.item')
+    USER_KNOWLEDGE_FILE = os.path.join(PROCESSED_DIR, 'user.klg')
+    ITEM_KNOWLEDGE_FILE = os.path.join(PROCESSED_DIR, 'item.klg')
+
+    main(USER_PROMPT_FILE, ITEM_PROMPT_FILE, USER_KNOWLEDGE_FILE, ITEM_KNOWLEDGE_FILE)

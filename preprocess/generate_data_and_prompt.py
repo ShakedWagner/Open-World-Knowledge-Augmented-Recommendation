@@ -125,9 +125,8 @@ def generate_item_prompt(item2attribute, datamap, dataset_name):
 
 if __name__ == '__main__':
     random.seed(12345)
-    BASE_DIR = r'C:\Users\Shaked\Desktop\Open-World-Knowledge-Augmented-Recommendation'
-    DATA_DIR = os.path.join(BASE_DIR, 'data')
-    DATA_SET_NAME = 'amz'
+    DATA_DIR = '../data/'
+    DATA_SET_NAME = 'ml-1m' #'amz'
     if DATA_SET_NAME == 'ml-1m':
         rating_threshold = 3
     else:
