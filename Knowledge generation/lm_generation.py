@@ -1,19 +1,17 @@
 import json
 import os
-from transformers import AutoTokenizer, AutoModelForCausalLM
+import transformers
+import torch
 
-# Initialize the tokenizer and model
-model_name = "meta-llama/Llama-3.1-70B"  # Example: Llama-2 7B
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(model_name)
+# Initialize the text generation pipeline
+model_id = "meta-llama/Llama-3.1-8B"
+pipeline = transformers.pipeline(
+    "text-generation", model=model_id, model_kwargs={"torch_dtype": torch.bfloat16}, device_map="auto"
+)
 
 def generate_knowledge(prompt):
-    # Tokenize the input prompt
-    inputs = tokenizer(prompt, return_tensors="pt")
-    # Generate text using the model
-    outputs = model.generate(**inputs, max_new_tokens=50)
-    # Decode the generated tokens to text
-    generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    # Generate text using the pipeline
+    generated_text = pipeline(prompt, max_new_tokens=256, return_full_text=False)[0]['generated_text']
     return generated_text.strip()
 
 def save_to_file(filename, content):
