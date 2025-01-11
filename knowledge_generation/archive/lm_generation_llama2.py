@@ -89,7 +89,7 @@ def main(user_prompt_file, item_prompt_file, user_knowledge_file, item_knowledge
     user_ids = list(user_prompts.keys())#[:2]
     user_prompts_list = list(user_prompts.values()) #[:2]
     # Initialize the pipeline
-    pipeline = initialize_chat_pipeline()
+    pipeline = initialize_chat_pipeline(model_id="meta-llama/Llama-3.2-3B-Instruct")
     user_knowledge_list = generate_knowledge_batch(user_prompts_list, pipeline)
     for user_id, user_knowledge in zip(user_ids, user_knowledge_list):
         user_knowledge_dict[user_id] = {
