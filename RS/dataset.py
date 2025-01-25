@@ -5,13 +5,13 @@ from utils import load_json, load_pickle
 
 
 class AmzDataset(Data.Dataset):
-    def __init__(self, data_path, set='train', task='ctr', max_hist_len=10, augment=False, aug_prefix=None):
+    def __init__(self, data_path, set='train', task='ctr', max_hist_len=10, augment=False, aug_prefix=None, llm_name='Llama-2-7b-chat-hf'):
         self.task = task
         self.max_hist_len = max_hist_len
         self.augment = augment
         self.set = set
         self.data = load_pickle(data_path + f'/{task}.{set}')
-        self.stat = load_json(data_path + '/stat.json')
+        self.stat = load_json(data_path + f'/{llm_name}/stat.json')
         self.item_num = self.stat['item_num']
         self.attr_num = self.stat['attribute_num']
         self.attr_ft_num = self.stat['attribute_ft_num']
@@ -26,8 +26,8 @@ class AmzDataset(Data.Dataset):
         self.id2item = datamaps['id2item']
         self.id2user = datamaps['id2user']
         if augment:
-            self.hist_aug_data = load_json(data_path + f'/{aug_prefix}_augment.hist')
-            self.item_aug_data = load_json(data_path + f'/{aug_prefix}_augment.item')
+            self.hist_aug_data = load_json(data_path + f'/{llm_name}/{aug_prefix}_augment.hist')
+            self.item_aug_data = load_json(data_path + f'/{llm_name}/{aug_prefix}_augment.item')
             # print('item key', list(self.item_aug_data.keys())[:6], len(self.item_aug_data), self.item_num)
 
     def __len__(self):

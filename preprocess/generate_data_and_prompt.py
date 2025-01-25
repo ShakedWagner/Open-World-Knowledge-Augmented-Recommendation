@@ -5,6 +5,9 @@ from datetime import date
 import random
 from collections import defaultdict
 import csv
+
+import numpy as np
+from collaborative_filtering import collaborative_filtering as cf
 from pre_utils import load_json, save_json, save_pickle, GENDER_MAPPING, \
     AGE_MAPPING, OCCUPATION_MAPPING
 
@@ -29,7 +32,17 @@ def generate_ctr_data(sequence_data, lm_hist_idx, uid_set):
           sum(total_label) / len(total_label))
     print(full_data[:5])
     return full_data
+def generate_cf_data(sequence_data, lm_hist_idx, uid_set):
+    # print(list(lm_hist_idx.values())[:10])
+    full_data = []
+    for uid in uid_set:
+        start_idx = lm_hist_idx[str(uid)]
+        item_seq, rating_seq = sequence_data[str(uid)]
+        for idx in range(start_idx, len(item_seq)):
 
+            full_data.append([uid, idx, rating_seq[idx]])
+
+    return full_data
 
 def generate_rerank_data(sequence_data, lm_hist_idx, uid_set, item_set):
     full_data = []
@@ -51,7 +64,7 @@ def generate_rerank_data(sequence_data, lm_hist_idx, uid_set, item_set):
     return full_data
 
 
-def generate_hist_prompt(sequence_data, item2attribute, datamap, lm_hist_idx, dataset_name):
+def generate_hist_prompt(sequence_data, item2attribute, datamap, lm_hist_idx, dataset_name, train_set, cf_model):
     itemid2title = datamap['itemid2title']
     attrid2name = datamap['id2attribute']
     id2user = datamap['id2user']
@@ -84,13 +97,29 @@ def generate_hist_prompt(sequence_data, item2attribute, datamap, lm_hist_idx, da
             user_text = 'Given a {} user who is aged {} and {}, this user\'s movie viewing history over time' \
                         ' is listed below. '.format(GENDER_MAPPING[gender], AGE_MAPPING[age],
                                                     OCCUPATION_MAPPING[occupation])
+    
             question = 'Analyze user\'s preferences on movies (consider factors like genre, director/actors, time ' \
                        'period/country, character, plot/theme, mood/tone, critical acclaim/award, production quality, ' \
                        'and soundtrack). Provide clear explanations based on relevant details from the user\'s movie ' \
                        'viewing history and other pertinent factors.'
-            hist_prompts[user] = user_text + ''.join(history_texts) + question
+            hist_prompts[user] = user_text + ''.join(history_texts)
+            if int(uid) in train_set:
+                prediction_texts = []
+                pred_items = random.choices(hist_item_seq, k=5)
+                for pred_item in pred_items:
+                    pred = cf_model.predict(int(uid), pred_item)
+                    prediction_texts.append(f'"{itemid2title[str(pred_item)]}", {round(pred.est)} stars; ')
+                    
+                ds_item = 'movies' if dataset_name == 'ml-1m' else 'books'
+                cf_text = f' Based on similar users\' preferences, the user may rate the following {ds_item} as such: ' + ''.join(prediction_texts)
+                hist_prompts[user] +=  cf_text
+            hist_prompts[user] += question
+        
         else:
             raise NotImplementedError
+        
+        
+
     print('data num', len(hist_prompts))
     print(list(hist_prompts.items())[0])
     return hist_prompts
@@ -125,13 +154,13 @@ def generate_item_prompt(item2attribute, datamap, dataset_name):
 
 if __name__ == '__main__':
     random.seed(12345)
-    DATA_DIR = '../data/'
+    DATA_DIR = '/nvcr/stor/fast/afeldman/data/tests/data' # '../data/'
     DATA_SET_NAME = 'ml-1m' #'amz'
     if DATA_SET_NAME == 'ml-1m':
         rating_threshold = 3
     else:
         rating_threshold = 4
-    PROCESSED_DIR = os.path.join(DATA_DIR, DATA_SET_NAME, 'proc_data')
+    PROCESSED_DIR = os.path.join(DATA_DIR, DATA_SET_NAME, 'proc_data_w_cf') # proc_data
     SEQUENCE_PATH = os.path.join(PROCESSED_DIR, 'sequential_data.json')
     ITEM2ATTRIBUTE_PATH = os.path.join(PROCESSED_DIR, 'item2attributes.json')
     DATAMAP_PATH = os.path.join(PROCESSED_DIR, 'datamaps.json')
@@ -176,12 +205,13 @@ if __name__ == '__main__':
         'dense_dim': 0,
     }
     save_json(statis, os.path.join(PROCESSED_DIR, 'stat.json'))
-
+    train_cf = generate_cf_data(sequence_data, train_test_split['lm_hist_idx'], train_test_split['train'])
+    cf_model = cf(train_cf)
     print('generating item prompt')
     item_prompt = generate_item_prompt(item2attribute, datamap, DATA_SET_NAME)
     print('generating history prompt')
     hist_prompt = generate_hist_prompt(sequence_data, item2attribute, datamap,
-                                       train_test_split['lm_hist_idx'], DATA_SET_NAME)
+                                       train_test_split['lm_hist_idx'], DATA_SET_NAME, train_test_split['train'], cf_model)
     print('save prompt data')
     save_json(item_prompt, os.path.join(PROCESSED_DIR, 'prompt.item'))
     save_json(hist_prompt, os.path.join(PROCESSED_DIR, 'prompt.hist'))

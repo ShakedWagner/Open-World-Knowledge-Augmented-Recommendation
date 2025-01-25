@@ -9,14 +9,13 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from datasets import Dataset
 from accelerate import Accelerator
 from torch.utils.data import DataLoader
-
 # Add the project root directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from knowledge_encoding.utils import save_json
 from knowledge_encoding.lm_encoding import remap_item
 
 
-def initialize_model(model_id="meta-llama/Llama-3.2-3B-Instruct"):
+def initialize_model(model_id="meta-llama/Llama-2-7b-chat-hf"): #meta-llama/Llama-3.2-3B-Instruct
     # Initialize accelerator first
     accelerator = Accelerator()
     
@@ -41,24 +40,6 @@ def initialize_model(model_id="meta-llama/Llama-3.2-3B-Instruct"):
     
     return model, tokenizer, accelerator
 
-def generate_knowledge(prompts, chat_pipeline):
-    """
-    Generate knowledge for a batch of prompts using a chat-like model.
-    """
-    system_message = "Provide only specific, concise insights gained from the information provided."
-
-    generated_texts = []
-    for user_message in prompts:
-        prompt = f"<s>[SYSTEM]\n{system_message}\n</s><s>[USER]\n{user_message}\n</s><s>[ASSISTANT]\n"
-        
-        # Generate text using the chat pipeline
-        response = chat_pipeline(prompt, max_new_tokens=128, do_sample=True)[0]["generated_text"]
-        
-        # Post-process to strip out any extraneous tokens if needed
-        generated_text = response.replace(prompt, "").strip()
-        generated_texts.append(generated_text)
-
-    return generated_texts
 
 def save_to_file(filename, content):
     with open(filename, 'w') as file:
@@ -67,31 +48,31 @@ def save_to_file(filename, content):
 def load_prompts(filename):
     with open(filename, 'r') as file:
         return json.load(file)
-def extract_assistant_message(text):
+def extract_assistant_message(text, prompt):
     """
     Extracts everything between <s>[ASSISTANT] ... </s> 
     by splitting on known markers.
     Returns None if the markers aren't found.
     """
-    parts = text.split("<s>[ASSISTANT]")
-    if len(parts) < 2:
-        return None
-
+    # parts = text.split("[ASSISTANT]")
+    # if len(parts) > 1:
+    #     text = parts[1].strip()
+    text = text.replace(prompt, "")
     pattern = r'[^A-Za-z0-9 .,\?!;():]+/'
-    cleaned = re.sub(pattern, '', parts[1].strip())
+    cleaned = re.sub(pattern, '', text)
     return cleaned
     
 def generate_knowledge_batch(prompts, model, tokenizer, accelerator):
     """
     Generate knowledge for a batch of prompts using accelerator.
     """
-    system_message = "Provide only specific, concise insights gained from the information provided."
-    formatted_prompts = [f"<s>[SYSTEM]\n{system_message}\n</s><s>[USER]\n{prompt}\n</s><s>[ASSISTANT]\n" 
-                        for prompt in prompts]
+    # system_message = "Provide only specific, concise insights gained from the information provided."
+    # formatted_prompts = [f"<s>[SYSTEM]\n{system_message}\n</s><s>[USER]\n{prompt}\n</s><s>[ASSISTANT]\n" 
+    #                     for prompt in prompts]
     
     # Create dataset
-    dataset = Dataset.from_dict({"prompts": formatted_prompts})
-    
+    # dataset = Dataset.from_dict({"prompts": formatted_prompts})
+    dataset = Dataset.from_dict({"prompts": prompts})
     # Tokenize function
     def tokenize_function(batch):
         return tokenizer(
@@ -129,7 +110,7 @@ def generate_knowledge_batch(prompts, model, tokenizer, accelerator):
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=512,
+                    max_new_tokens=256,
                     do_sample=True,
                     temperature=0.7,
                     top_p=0.9,
@@ -142,8 +123,8 @@ def generate_knowledge_batch(prompts, model, tokenizer, accelerator):
             # Decode outputs
             decoded_texts = tokenizer.batch_decode(outputs, skip_special_tokens=True)
             final_messages = []
-            for decoded in decoded_texts:
-                assistant_only = extract_assistant_message(decoded)
+            for i, decoded in enumerate(decoded_texts):
+                assistant_only = extract_assistant_message(decoded, dataset[i]["prompts"])
                 final_messages.append(assistant_only)# generated_hidden_states = outputs.hidden_states
             # final_layer_hidden_states = generated_hidden_states[-1]
             # batch_encodings = final_layer_hidden_states.mean(dim=1).cpu()
@@ -171,7 +152,7 @@ def main(user_prompt_file, item_prompt_file, user_knowledge_file, item_knowledge
     item_prompts = load_prompts(item_prompt_file)
 
     # Initialize model
-    model, tokenizer, accelerator = initialize_model()
+    model, tokenizer, accelerator = initialize_model("meta-llama/Llama-2-7b-chat-hf") #meta-llama/Llama-3.2-3B-Instruct")
     
     # Process user prompts
     user_ids = list(user_prompts.keys())
@@ -184,7 +165,7 @@ def main(user_prompt_file, item_prompt_file, user_knowledge_file, item_knowledge
     user_knowledge_dict = {
         user_id: {
             "prompt": user_prompts[user_id],
-            "answer": knowledge
+            "ans": knowledge
         }
         for user_id, knowledge in zip(user_ids, user_knowledge_list)
     }
@@ -200,7 +181,7 @@ def main(user_prompt_file, item_prompt_file, user_knowledge_file, item_knowledge
     item_knowledge_dict = {
         item_id: {
             "prompt": item_prompts[item_id],
-            "answer": knowledge
+            "ans": knowledge
         }
         for item_id, knowledge in zip(item_ids, item_knowledge_list)
     }
@@ -224,10 +205,11 @@ def main(user_prompt_file, item_prompt_file, user_knowledge_file, item_knowledge
 
 if __name__ == "__main__":
     DATA_DIR = '/nvcr/stor/fast/afeldman/data/tests/data'
-    PROCESSED_DIR = os.path.join(DATA_DIR, 'ml-1m', 'proc_data')
+    PROCESSED_DIR = os.path.join(DATA_DIR, 'ml-1m', 'proc_data_w_cf') # proc_data
     USER_PROMPT_FILE = os.path.join(PROCESSED_DIR, 'prompt.hist')
     ITEM_PROMPT_FILE = os.path.join(PROCESSED_DIR, 'prompt.item')
-    KNOWLEDGE_DIR = os.path.join(DATA_DIR, 'ml-1m', 'knowledge, Llama-3.2-3B-Instruct')
+    
+    KNOWLEDGE_DIR = os.path.join(DATA_DIR, 'ml-1m', 'knowledge_w_cf', 'Llama-2-7b-chat-hf')
     if not os.path.exists(KNOWLEDGE_DIR):
         os.makedirs(KNOWLEDGE_DIR)
     USER_KNOWLEDGE_FILE = os.path.join(KNOWLEDGE_DIR, 'user.klg')

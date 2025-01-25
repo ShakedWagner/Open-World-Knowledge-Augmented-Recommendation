@@ -20,6 +20,8 @@ from utils import load_parse_from_json, setup_seed, load_data, weight_init, str2
 from models import DeepInterestNet, DCN, DeepFM, DIEN, xDeepFM, FiBiNet, FiGNN, AutoInt
 from dataset import AmzDataset
 from optimization import AdamW, get_cosine_schedule_with_warmup, get_constant_schedule_with_warmup
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 
 def eval(model, test_loader):
@@ -110,8 +112,8 @@ def get_optimizer(args, model, train_data_num):
 
 
 def train(args):
-    train_set = AmzDataset(args.data_dir, 'train', args.task, args.max_hist_len, args.augment, args.aug_prefix)
-    test_set = AmzDataset(args.data_dir, 'test', args.task, args.max_hist_len, args.augment, args.aug_prefix)
+    train_set = AmzDataset(args.data_dir, 'train', args.task, args.max_hist_len, args.augment, args.aug_prefix, args.llm_name)
+    test_set = AmzDataset(args.data_dir, 'test', args.task, args.max_hist_len, args.augment, args.aug_prefix, args.llm_name)
     train_loader = Data.DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True)
     test_loader = Data.DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False)
     print('Train data size:', len(train_set), 'Test data size:', len(test_set))
@@ -121,12 +123,20 @@ def train(args):
     optimizer, scheduler = get_optimizer(args, model, len(train_set))
 
     save_path = os.path.join(args.save_dir, args.algo + '.pt')
+    plot_path = os.path.join(args.save_dir, 'plots.png')
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
 
     best_auc = 0
     global_step = 0
     patience = 0
+
+    # Lists to store metrics for plotting
+    train_losses = []
+    eval_aucs = []
+    eval_lls = []
+    eval_losses = []
+
     for epoch in range(args.epoch_num):
         t = time.time()
         train_loss = []
@@ -142,6 +152,13 @@ def train(args):
             global_step += 1
         train_time = time.time() - t
         eval_auc, eval_ll, eval_loss, eval_time = eval(model, test_loader)
+        
+        # Store metrics
+        train_losses.append(np.mean(train_loss))
+        eval_aucs.append(eval_auc)
+        eval_lls.append(eval_ll)
+        eval_losses.append(eval_loss)
+
         print("EPOCH %d  STEP %d train loss: %.5f, train time: %.5f, test loss: %.5f, test time: %.5f, auc: %.5f, "
               "logloss: %.5f" % (epoch, global_step, np.mean(train_loss), train_time, eval_loss,
                                  eval_time, eval_auc, eval_ll))
@@ -154,6 +171,40 @@ def train(args):
             patience += 1
             if patience >= args.patience:
                 break
+
+    # Plot and save the graphs
+    plt.figure(figsize=(18, 5))
+
+    # Plot training loss
+    plt.subplot(1, 4, 1)
+    sns.lineplot(x=range(len(train_losses)), y=train_losses)
+    plt.title('Training Loss over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+
+    # Plot AUC
+    plt.subplot(1, 4, 2)
+    sns.lineplot(x=range(len(eval_aucs)), y=eval_aucs)
+    plt.title('Test AUC over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('AUC')
+
+    # Plot Log Loss
+    plt.subplot(1, 4, 3)
+    sns.lineplot(x=range(len(eval_lls)), y=eval_lls)
+    plt.title('Test Log Loss over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Log Loss')
+
+    plt.subplot(1, 4, 4)
+    sns.lineplot(x=range(len(eval_losses)), y=eval_losses)
+    plt.title('Test Loss over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Log Loss')
+
+    plt.tight_layout()
+    plt.savefig(plot_path)
+    plt.close()
 
 
 def parse_args():
@@ -214,7 +265,8 @@ def parse_args():
     parser.add_argument('--gnn_layer_num', default=2, type=int, help='layer num of GNN in FiGNN')
     parser.add_argument('--reuse_graph_layer', default=True, type=bool, help='whether reuse graph layer in FiGNN')
     parser.add_argument('--dien_gru', default='GRU', type=str, help='gru type in DIEN')
-
+    parser.add_argument('--plot_path', default='../plots/training_plots.png', type=str, help='Path to save training plots')
+    parser.add_argument('--llm_name', default='Llama-2-7b-chat-hf', type=str, help='llm name')
     args, _ = parser.parse_known_args()
     args.augment = True if args.augment.lower() == 'true' else False
 

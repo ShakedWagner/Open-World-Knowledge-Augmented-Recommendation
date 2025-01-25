@@ -108,12 +108,12 @@ def main(knowledge_path, data_path, model_name, batch_size, aggregate_type):
     save_json(item_vec_dict, os.path.join(data_path, '{}_{}_augment.item'.format(model_name, aggregate_type)))
     save_json(hist_vec_dict, os.path.join(data_path, '{}_{}_augment.hist'.format(model_name, aggregate_type)))
 
-    stat_path = os.path.join(data_path, 'stat.json')
+    stat_path = os.path.join(data_path, '..', 'stat.json')
     with open(stat_path, 'r') as f:
         stat = json.load(f)
-
+    new_stat_path = os.path.join(data_path, 'stat_new.json')
     stat['dense_dim'] = 4096 if model_name == 'chatglm' or model_name == 'chatglm2' else 768
-    with open(stat_path, 'w') as f:
+    with open(new_stat_path, 'w') as f:
         stat = json.dumps(stat)
         f.write(stat)
 
@@ -122,8 +122,14 @@ if __name__ == '__main__':
     DATA_DIR = '/nvcr/stor/fast/afeldman/data/tests/data'
     # DATA_SET_NAME = 'amz'
     DATA_SET_NAME = 'ml-1m'
-    KLG_PATH = os.path.join(DATA_DIR, DATA_SET_NAME, 'knowledge', 'Llama-2-7b-chat-hf')
-    DATA_PATH = os.path.join(DATA_DIR, DATA_SET_NAME, 'proc_data')
+    # KLG_PATH = os.path.join(DATA_DIR, DATA_SET_NAME, 'knowledge', 'Llama-2-7b-chat-hf')
+    # DATA_PATH = os.path.join(DATA_DIR, DATA_SET_NAME, 'proc_data')
+   
+    model_name = 'Llama-2-7b-chat-hf'
+    DATA_PATH = os.path.join(DATA_DIR, DATA_SET_NAME, 'proc_data_w_cf', model_name) # proc_data
+    if not os.path.exists(DATA_PATH):
+        os.makedirs(DATA_PATH)
+    KLG_PATH = os.path.join(DATA_DIR, DATA_SET_NAME, 'knowledge_w_cf', model_name) #Llama-3.2-3B-Instruct
     # MODEL_NAME = 'chatglm'
     # MODEL_NAME = 'chatglm2'
     MODEL_NAME = 'bert'  # bert, chatglm, chatglm2
