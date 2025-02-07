@@ -213,7 +213,7 @@ def main(user_prompt_file, item_prompt_file, user_knowledge_file, item_knowledge
     print("Knowledge files generated successfully.")
 
 if __name__ == "__main__":
-    DATA_DIR = '/nvcr/stor/fast/afeldman/data/tests/data'
+    DATA_DIR = ''
     PROCESSED_DIR = os.path.join(DATA_DIR, 'ml-1m', 'proc_data')
     USER_PROMPT_FILE = os.path.join(PROCESSED_DIR, 'prompt.hist')
     ITEM_PROMPT_FILE = os.path.join(PROCESSED_DIR, 'prompt.item')

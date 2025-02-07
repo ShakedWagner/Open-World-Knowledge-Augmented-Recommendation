@@ -119,7 +119,7 @@ def main(knowledge_path, data_path, model_name, batch_size, aggregate_type):
 
 
 if __name__ == '__main__':
-    DATA_DIR = '/nvcr/stor/fast/afeldman/data/tests/data'
+    DATA_DIR = ''
     # DATA_SET_NAME = 'amz'
     DATA_SET_NAME = 'ml-1m'
     # KLG_PATH = os.path.join(DATA_DIR, DATA_SET_NAME, 'knowledge', 'Llama-2-7b-chat-hf')

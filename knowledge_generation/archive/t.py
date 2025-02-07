@@ -122,7 +122,7 @@ def main(user_prompt_file: str, item_prompt_file: str,
 
 if __name__ == "__main__":
     # Use environment variables or configuration file for paths
-    DATA_DIR = os.getenv('DATA_DIR', '/nvcr/stor/fast/afeldman/data/tests/data')
+    DATA_DIR = os.getenv('DATA_DIR', '')
     PROCESSED_DIR = Path(DATA_DIR) / 'ml-1m' / 'proc_data'
     
     # Ensure directory exists

@@ -283,5 +283,8 @@ if __name__ == '__main__':
     setup_seed(args.seed)
 
     print('parameters', args)
-    train(args)
+    if args.test:
+        test(args)
+    else:
+        train(args)
 

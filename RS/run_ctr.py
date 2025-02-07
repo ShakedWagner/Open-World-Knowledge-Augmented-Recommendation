@@ -1,14 +1,14 @@
 import subprocess
 
-# Training args
-data_dir = '/nvcr/stor/fast/afeldman/data/tests/data/ml-1m/proc_data_w_cf'
+root_dir = ""
+data_dir = f'{root_dir}/ml-1m/proc_data' #_w_cf'
 task_name = 'ctr'
 # dataset_name = 'amz'
 dataset_name = 'ml-1m'
 aug_prefix = 'bert_avg'
 augment = True
 # augment = False
-llm_name = 'Llama-2-7b-chat-hf'
+llm_name = 'knowledge_llama3_2' #'Llama-2-7b-chat-hf'
 
 epoch = 20
 batch_size = 256
@@ -30,8 +30,10 @@ export_num = 2
 specific_export_num = 5
 dien_gru = 'AIGRU'
 
-save_dir = f'/nvcr/stor/fast/afeldman/data/tests/data/model_llama2_w_cf/{dataset_name}/{task_name}/{model}/WDA_Emb{embed_size}_epoch{epoch}'
-
+test = True
+root_dir = ""
+save_dir = f'{root_dir}/model_llama2_w_cf/{dataset_name}/{task_name}/{model}/WDA_Emb{embed_size}_epoch{epoch}'
+reload_path = f'{root_dir}/model_orig/ml-1m/ctr/DIN/WDA_Emb32_epoch20_bs512_lr1e-4_cosine_cnvt_arch_128,32_cnvt_type_HEA_eprt_2_wd0_drop0.0_hl200,80_cl3_augment_True/DIN.pt'
 # Run the train process
 
 for batch_size in [512]:#256, 512, 2048, 128, 1024,]:
@@ -65,5 +67,7 @@ for batch_size in [512]:#256, 512, 2048, 128, 1024,]:
                                 f'--final_mlp_arch={final_mlp}',
                                 f'--dropout={dropout}',
                                 f'--dien_gru={dien_gru}',
-                                f'--llm_name={llm_name}'
+                                f'--llm_name={llm_name}',
+                                f'--test',
+                                f'--reload_path={reload_path}'
                                 ])

@@ -154,7 +154,7 @@ def generate_item_prompt(item2attribute, datamap, dataset_name):
 
 if __name__ == '__main__':
     random.seed(12345)
-    DATA_DIR = '/nvcr/stor/fast/afeldman/data/tests/data' # '../data/'
+    DATA_DIR = '' # '../data/'
     DATA_SET_NAME = 'ml-1m' #'amz'
     if DATA_SET_NAME == 'ml-1m':
         rating_threshold = 3
