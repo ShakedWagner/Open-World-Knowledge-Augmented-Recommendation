@@ -5,7 +5,7 @@ from utils import load_json, load_pickle
 
 
 class AmzDataset(Data.Dataset):
-    def __init__(self, data_path, set='train', task='ctr', max_hist_len=10, augment=False, aug_prefix=None):
+    def __init__(self, data_path, set='train', task='ctr', max_hist_len=10, augment=False, aug_prefix=None, user_cold_start=False):
         self.task = task
         self.max_hist_len = max_hist_len
         self.augment = augment
@@ -26,7 +26,10 @@ class AmzDataset(Data.Dataset):
         self.id2item = datamaps['id2item']
         self.id2user = datamaps['id2user']
         if augment:
-            self.hist_aug_data = load_json(data_path + f'/{aug_prefix}_augment.hist')
+            if user_cold_start:
+                self.hist_aug_data = load_json(data_path + f'/{aug_prefix}_augment.hist')
+            else:
+                self.hist_aug_data = load_json(data_path + f'/{aug_prefix}_augment_cs.hist')
             self.item_aug_data = load_json(data_path + f'/{aug_prefix}_augment.item')
             # print('item key', list(self.item_aug_data.keys())[:6], len(self.item_aug_data), self.item_num)
 
@@ -34,6 +37,7 @@ class AmzDataset(Data.Dataset):
         return self.length
 
     def __getitem__(self, _id):
+        
         if self.task == 'ctr':
             uid, seq_idx, lb = self.data[_id]
             item_seq, rating_seq = self.sequential_data[str(uid)]

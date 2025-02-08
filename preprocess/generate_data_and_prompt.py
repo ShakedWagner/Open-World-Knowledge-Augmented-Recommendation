@@ -15,6 +15,9 @@ ctr_hist_len = 10
 
 
 def generate_ctr_data(sequence_data, lm_hist_idx, uid_set):
+    """
+    Generate CTR data for training and testing. Generate binary labels for each interaction 0 if rating is lower than rating_threshold, 1 otherwise.
+    """
     # print(list(lm_hist_idx.values())[:10])
     full_data = []
     total_label = []
@@ -32,6 +35,9 @@ def generate_ctr_data(sequence_data, lm_hist_idx, uid_set):
 
 
 def generate_rerank_data(sequence_data, lm_hist_idx, uid_set, item_set):
+    """
+    Generate reranking data for training and testing.
+    """
     full_data = []
     for uid in uid_set:
         start_idx = lm_hist_idx[str(uid)]
@@ -52,6 +58,9 @@ def generate_rerank_data(sequence_data, lm_hist_idx, uid_set, item_set):
 
 
 def generate_hist_prompt(sequence_data, item2attribute, datamap, lm_hist_idx, dataset_name):
+    """
+    Generate history prompt for language model.
+    """
     itemid2title = datamap['itemid2title']
     attrid2name = datamap['id2attribute']
     id2user = datamap['id2user']
@@ -97,6 +106,9 @@ def generate_hist_prompt(sequence_data, item2attribute, datamap, lm_hist_idx, da
 
 
 def generate_item_prompt(item2attribute, datamap, dataset_name):
+    """
+    Generate item prompt for language model.
+    """
     itemid2title = datamap['itemid2title']
     attrid2name = datamap['id2attribute']
     id2item = datamap['id2item']
@@ -125,9 +137,9 @@ def generate_item_prompt(item2attribute, datamap, dataset_name):
 
 if __name__ == '__main__':
     random.seed(12345)
-    BASE_DIR = r'C:\Users\Shaked\Desktop\Open-World-Knowledge-Augmented-Recommendation'
-    DATA_DIR = os.path.join(BASE_DIR, 'data')
-    DATA_SET_NAME = 'amz'
+    BASE_DIR = r'/nvcr/stor/fast/afeldman/data/tests/'
+    DATA_DIR = os.path.join(BASE_DIR, 'kar_data')
+    DATA_SET_NAME = 'ml-1m'
     if DATA_SET_NAME == 'ml-1m':
         rating_threshold = 3
     else:

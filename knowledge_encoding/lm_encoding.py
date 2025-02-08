@@ -20,16 +20,30 @@ def load_data(path):
     return res
 
 
-def get_history_text(data_path):
+def get_history_text(data_path, cold_start=False):
     raw_data = load_data(data_path)
     idx_list, hist_text = [], []
     for piece in raw_data:
         idx, prompt, answer = piece
         pure_hist = prompt[::-1].split(';', 1)[-1][::-1]
-        hist_text.append(pure_hist + '. ' + answer)
+        if not cold_start:
+            hist_text.append(pure_hist + '. ' + answer)
+        else:
+            # Extract only the demographic info from the prompt
+            demo_info = prompt.split('.')[0].strip().removeprefix('Given ').split(',')[0]
+            hist_text.append(demo_info + ' with no viewing history')
         idx_list.append(idx)
     return idx_list, hist_text
 
+# def get_history_text(data_path):
+#     raw_data = load_data(data_path)
+#     idx_list, hist_text = [], []
+#     for piece in raw_data:
+#         idx, prompt, answer = piece
+#         pure_hist = prompt[::-1].split(';', 1)[-1][::-1]
+#         hist_text.append(pure_hist + '. ' + answer)
+#         idx_list.append(idx)
+#     return idx_list, hist_text
 
 def get_item_text(data_path):
     raw_data = load_data(data_path)
@@ -46,13 +60,17 @@ def get_text_data_loader(data_path, batch_size):
     print('chatgpt.hist 1', history[1], 'hist len', len(history))
     item_idxes, items = get_item_text(os.path.join(data_path, 'item.klg'))
     print('chatgpt.item 1', items[1], 'item len', len(items))
-
+    hist_idxes_cs, history_cs = get_history_text(os.path.join(data_path, 'user.klg'), cold_start=True)
     history_loader = DataLoader(history, batch_size, shuffle=False)
+    history_cs_loader = DataLoader(history_cs, batch_size, shuffle=False)
     item_loader = DataLoader(items, batch_size, shuffle=False)
-    return history_loader, hist_idxes, item_loader, item_idxes
+    return history_loader, hist_idxes, history_cs_loader, hist_idxes_cs, item_loader, item_idxes
 
 
 def remap_item(item_idxes, item_vec):
+    """
+    Remap item/history indices to item/history vectors.
+    """
     item_vec_map = {}
     for idx, vec in zip(item_idxes, item_vec):
         item_vec_map[idx] = vec
@@ -83,7 +101,7 @@ def inference(model, tokenizer, dataloader, model_name, aggregate_type):
 
 
 def main(knowledge_path, data_path, model_name, batch_size, aggregate_type):
-    hist_loader, hist_idxes, item_loader, item_idxes = get_text_data_loader(knowledge_path, batch_size)
+    hist_loader, hist_idxes, hist_cs_loader, hist_idxes_cs, item_loader, item_idxes = get_text_data_loader(knowledge_path, batch_size)
 
     if model_name == 'chatglm':
         checkpoint = '../../llm/chatglm-6b' if os.path.exists('../../llm/chatglm-6b') else 'chatglm-6b'
@@ -100,12 +118,14 @@ def main(knowledge_path, data_path, model_name, batch_size, aggregate_type):
 
     item_vec = inference(model, tokenizer, item_loader, model_name, aggregate_type)
     hist_vec = inference(model, tokenizer, hist_loader, model_name, aggregate_type)
+    hist_cs_vec = inference(model, tokenizer, hist_cs_loader, model_name, aggregate_type)
     item_vec_dict = remap_item(item_idxes, item_vec)
     hist_vec_dict = remap_item(hist_idxes, hist_vec)
+    hist_cs_vec_dict = remap_item(hist_idxes_cs, hist_cs_vec)
 
     save_json(item_vec_dict, os.path.join(data_path, '{}_{}_augment.item'.format(model_name, aggregate_type)))
     save_json(hist_vec_dict, os.path.join(data_path, '{}_{}_augment.hist'.format(model_name, aggregate_type)))
-
+    save_json(hist_cs_vec_dict, os.path.join(data_path, '{}_{}_augment_cs.hist'.format(model_name, aggregate_type)))
     stat_path = os.path.join(data_path, 'stat.json')
     with open(stat_path, 'r') as f:
         stat = json.load(f)
@@ -117,7 +137,7 @@ def main(knowledge_path, data_path, model_name, batch_size, aggregate_type):
 
 
 if __name__ == '__main__':
-    DATA_DIR = '../data/'
+    DATA_DIR = '/nvcr/stor/fast/afeldman/data/tests/kar_data/'
     # DATA_SET_NAME = 'amz'
     DATA_SET_NAME = 'ml-1m'
     KLG_PATH = os.path.join(DATA_DIR, DATA_SET_NAME, 'knowledge')

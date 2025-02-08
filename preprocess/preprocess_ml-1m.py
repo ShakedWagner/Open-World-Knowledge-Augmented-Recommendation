@@ -26,6 +26,10 @@ attribute_core = 0
 
 
 def ml_1m(data_file, rating_score):
+    """
+    Read the ml-1m dataset and return a list of tuples, where each tuple contains a user ID, an item ID, a timestamp, and a rating.
+    Lower rating than rating_score are ignored.
+    """
     datas = []
     all_num, wo_rating_num = 0, 0
     with open(data_file, 'r') as r:
@@ -43,6 +47,9 @@ def ml_1m(data_file, rating_score):
 
 
 def ml_1m_user(data_file):
+    """
+    Read the ml-1m user file and return a dictionary, where each key is a user ID and each value is a list containing the user's gender, age, and occupation.
+    """
     user_info = {}
     with open(data_file, 'r') as r:
         lines = r.readlines()
@@ -53,6 +60,9 @@ def ml_1m_user(data_file):
 
 
 def ml_1m_meta(meta_file, data_maps):  # return the metadata of products
+    """
+    Read the ml-1m metadata file and return a dictionary, where each key is an item ID and each value is a dictionary containing the item's categories and title.
+    """
     datas = {}
     item_asins = set(data_maps['item2id'].keys())
     with open(meta_file, 'r', encoding='latin-1') as r:
@@ -73,6 +83,9 @@ def ml_1m_meta(meta_file, data_maps):  # return the metadata of products
 
 # categories and brand is all attribute
 def get_attribute_ml(meta_infos, datamaps, user_infos):
+    """
+    Extract attributes from the metadata and return the number of attributes, the average length of attributes per item, and the updated data maps.
+    """
     attributes = defaultdict(int)
     for iid, info in meta_infos.items():
         for cate in info['categories']:
@@ -125,6 +138,9 @@ def get_attribute_ml(meta_infos, datamaps, user_infos):
 
 
 def get_interaction(datas):  # return a dict, key is user and value is a list of items
+    """
+    Extract user interactions from the dataset and return a dictionary, where each key is a user ID and each value is a list of lists where each inner list represent an interaction, containing the item ID and rating, the interactions are sorted by time.
+    """ 
     user_seq = {}
     for data in datas:
         user, item, time, rating = data
@@ -138,13 +154,16 @@ def get_interaction(datas):  # return a dict, key is user and value is a list of
         item_time.sort(key=lambda x: x[1])  # sorting by time
         items = []
         for t in item_time:
-            items.append([t[0], t[2]])
+            items.append([t[0], t[2]]) # item, rating
         user_seq[user] = items
     return user_seq
 
 
 # K-core user_core item_core
 def check_Kcore(user_items, user_core, item_core):
+    """
+    Check if the user and item have K-core properties and return the user and item counts, the rating counts, and a boolean indicating if the K-core properties are satisfied.
+    """
     user_count = defaultdict(int)
     item_count = defaultdict(int)
     rating_count = defaultdict(int)
@@ -154,10 +173,10 @@ def check_Kcore(user_items, user_core, item_core):
             item_count[item] += 1
             rating_count[rating] += 1
 
-    for user, num in user_count.items():
+    for user, num in user_count.items(): # check if user has less than user_core interactions
         if num < user_core:
             return user_count, item_count, rating_count, False
-    for item, num in item_count.items():
+    for item, num in item_count.items(): # check if item has less than item_core interactions
         if num < item_core:
             return user_count, item_count, rating_count, False
     return user_count, item_count, rating_count, True  # guarantee Kcore
@@ -165,6 +184,9 @@ def check_Kcore(user_items, user_core, item_core):
 
 # filter K-core
 def filter_Kcore(user_items, user_core, item_core):
+    """
+    Filter out users and items that do not have K-core properties and return the updated user interactions.
+    """
     user_count, item_count, rating_count, isKcore = check_Kcore(user_items, user_core, item_core)
     while not isKcore:
         for user, num in user_count.items():
@@ -179,6 +201,9 @@ def filter_Kcore(user_items, user_core, item_core):
 
 
 def id_map(user_items):  # user_items dict
+    """
+    Map user and item IDs to sequential IDs and return the final data, the number of users, the number of items, the data maps, and the history length index for each user.
+    """
     user2id = {}  # raw 2 uid
     item2id = {}  # raw 2 iid
     id2user = {}  # uid 2 raw
@@ -217,6 +242,9 @@ def id_map(user_items):  # user_items dict
 
 
 def update_data(user_items, item_diff, id2item):
+    """
+    Update the user interactions by removing items that are not in the metadata and return the updated user interactions, the number of items, and the history length index for each user.
+    """
     new_data = {}
     lm_hist_idx = {}
     for user, user_data in user_items.items():
@@ -234,6 +262,9 @@ def update_data(user_items, item_diff, id2item):
 
 
 def preprocess(data_file, meta_file, user_file, processed_dir, data_type='ml-1m'):
+    """
+    Preprocess the ml-1m dataset and save the processed data to the specified directory.
+    """
     assert data_type in {'ml-1m'}
 
     datas = ml_1m(data_file, rating_score=rating_score)
@@ -340,7 +371,8 @@ def preprocess(data_file, meta_file, user_file, processed_dir, data_type='ml-1m'
 
 if __name__ == '__main__':
     set_seed(1234)
-    DATA_DIR = '../data/'
+    
+    DATA_DIR = '/nvcr/stor/fast/afeldman/data/tests/kar_data/'
     DATA_SET_NAME = 'ml-1m'
     DATA_FILE = os.path.join(DATA_DIR, DATA_SET_NAME + '/raw_data/ratings.dat')
     META_FILE = os.path.join(DATA_DIR, DATA_SET_NAME + '/raw_data/movies.dat')
