@@ -46,7 +46,7 @@ def eval(model, test_loader):
 
 def test(args):
     model = torch.load(args.reload_path)
-    test_set = AmzDataset(args.data_dir, 'test', args.task, args.max_hist_len, args.augment, args.aug_prefix, user_cold_start=args.user_cold_start )
+    test_set = AmzDataset(args.data_dir, 'test', args.task, args.max_hist_len, args.augment, args.aug_prefix, user_cold_start=args.user_cold_start, cold_start_ratio=args.cold_start_ratio, cold_start_n_interact=args.cold_start_n_interact)
     test_loader = Data.DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False)
     print('Test data size:', len(test_set))
     auc, ll, loss, eval_time = eval(model, test_loader)
@@ -112,7 +112,7 @@ def get_optimizer(args, model, train_data_num):
 
 
 def train(args):
-    train_set = AmzDataset(args.data_dir, 'train', args.task, args.max_hist_len, args.augment, args.aug_prefix)
+    train_set = AmzDataset(args.data_dir, 'train', args.task, args.max_hist_len, args.augment, args.aug_prefix, user_cold_start=args.user_cold_start, cold_start_ratio=args.cold_start_ratio, cold_start_n_interact=args.cold_start_n_interact)
     test_set = AmzDataset(args.data_dir, 'test', args.task, args.max_hist_len, args.augment, args.aug_prefix)
     train_loader = Data.DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True)
     test_loader = Data.DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False)
@@ -270,6 +270,8 @@ def parse_args():
     parser.add_argument('--dien_gru', default='GRU', type=str, help='gru type in DIEN')
     parser.add_argument('--plot_path', default='plots/training_plots.png', type=str, help='Path to save training plots')
     parser.add_argument('--user_cold_start', default=False, type=bool, help='whether to test user cold start scenario')
+    parser.add_argument('--cold_start_ratio', default=0.0, type=float, help='ratio of cold start users')
+    parser.add_argument('--cold_start_n_interact', default=1, type=int, help='number of interactions left for cold start users')
     args, _ = parser.parse_known_args()
     args.augment = True if args.augment.lower() == 'true' else False
 

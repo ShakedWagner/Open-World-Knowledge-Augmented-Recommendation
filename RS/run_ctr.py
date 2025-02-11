@@ -32,8 +32,13 @@ export_num = 2
 specific_export_num = 5
 dien_gru = 'AIGRU'
 user_cold_start = True
+cold_start_ratio = 1.0
+cold_start_n_interact = 0
 test = True
-max_hist_len = 1
+max_hist_len = 5
+save_dir = f'{root_dir}/{dataset_name}/{task_name}/{model}/WDA_Emb{embed_size}_epoch{epoch}'
+reload_path = f'{root_dir}/{dataset_name}/{task_name}/{model}/WDA_Emb32_epoch20/DIN.pt' #_bs512_lr1e-4_cosine_cnvt_arch_128,32_cnvt_type_HEA_eprt_2_wd0_drop0.0_hl200,80_cl3_augment_True
+
 # Run the train process
 
 for batch_size in [512]:#256, 512, 2048, 128, 1024,]:
@@ -43,32 +48,39 @@ for batch_size in [512]:#256, 512, 2048, 128, 1024,]:
 
                 print('---------------bs, lr, epoch, export share/spcf, convert arch, gru----------', batch_size,
                       lr, epoch, export_num, specific_export_num, convert_arch, dien_gru, model)
-                subprocess.run(['python', '-u', './Open-World-Knowledge-Augmented-Recommendation/RS/main_ctr.py',
-                                f'--save_dir={root_dir}/{dataset_name}/{task_name}/{model}/WDA_Emb{embed_size}_epoch{epoch}'
-                                f'_bs{batch_size}_lr{lr}_{lr_sched}_cnvt_arch_{convert_arch}_cnvt_type_{convert_type}'
-                                f'_eprt_{export_num}_wd{weight_decay}_drop{dropout}' + \
-                                f'_hl{final_mlp}_cl{num_cross_layers}_augment_{augment}',
-                                f'--data_dir={data_dir}',
-                                f'--augment={augment}',
-                                f'--aug_prefix={aug_prefix}',
-                                f'--task={task_name}',
-                                f'--convert_arch={convert_arch}',
-                                f'--convert_type={convert_type}',
-                                f'--convert_dropout={convert_dropout}',
-                                f'--epoch_num={epoch}',
-                                f'--batch_size={batch_size}',
-                                f'--lr={lr}',
-                                f'--lr_sched={lr_sched}',
-                                f'--weight_decay={weight_decay}',
-                                f'--algo={model}',
-                                f'--embed_size={embed_size}',
-                                f'--export_num={export_num}',
-                                f'--specific_export_num={specific_export_num}',
-                                f'--final_mlp_arch={final_mlp}',
-                                f'--dropout={dropout}',
-                                f'--dien_gru={dien_gru}',
-                                f'--user_cold_start={user_cold_start}',
-                                f'--test={test}',
-                                f'--max_hist_len={max_hist_len}',
-                                
-                                ])
+                command = [
+                    'python', '-u', './Open-World-Knowledge-Augmented-Recommendation/RS/main_ctr.py',
+                    f'--save_dir={save_dir}',
+                    f'_bs{batch_size}_lr{lr}_{lr_sched}_cnvt_arch_{convert_arch}_cnvt_type_{convert_type}'
+                    f'_eprt_{export_num}_wd{weight_decay}_drop{dropout}' + \
+                    f'_hl{final_mlp}_cl{num_cross_layers}_augment_{augment}',
+                    f'--data_dir={data_dir}',
+                    f'--augment={augment}',
+                    f'--aug_prefix={aug_prefix}',
+                    f'--task={task_name}',
+                    f'--convert_arch={convert_arch}',
+                    f'--convert_type={convert_type}',
+                    f'--convert_dropout={convert_dropout}',
+                    f'--epoch_num={epoch}',
+                    f'--batch_size={batch_size}',
+                    f'--lr={lr}',
+                    f'--lr_sched={lr_sched}',
+                    f'--weight_decay={weight_decay}',
+                    f'--algo={model}',
+                    f'--embed_size={embed_size}',
+                    f'--export_num={export_num}',
+                    f'--specific_export_num={specific_export_num}',
+                    f'--final_mlp_arch={final_mlp}',
+                    f'--dropout={dropout}',
+                    f'--dien_gru={dien_gru}',
+                    f'--user_cold_start={user_cold_start}',
+                    f'--max_hist_len={max_hist_len}',
+                    f'--cold_start_ratio={cold_start_ratio}',
+                    f'--cold_start_n_interact={cold_start_n_interact}',
+                ]
+
+                if test:
+                    command.append('--test')
+                    command.append(f'--reload_path={reload_path}')
+
+                subprocess.run(command)

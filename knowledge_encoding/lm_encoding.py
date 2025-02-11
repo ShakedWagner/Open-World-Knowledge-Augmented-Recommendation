@@ -7,7 +7,7 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, AutoModel
 
-from utils import save_json, get_paragraph_representation
+from utils import load_json, save_json, get_paragraph_representation
 device = 'cuda'
 
 
@@ -45,20 +45,25 @@ def get_history_text(data_path, cold_start=False):
 #         idx_list.append(idx)
 #     return idx_list, hist_text
 
-def get_item_text(data_path):
+def get_item_text(data_path, no_interaction_item_id):
+    """
+    Get item text from the data path.
+    """
     raw_data = load_data(data_path)
     idx_list, text_list = [], []
     for piece in raw_data:
         idx, prompt, answer = piece
         text_list.append(answer)
         idx_list.append(idx)
+    text_list.append("no interaction item")
+    idx_list.append(no_interaction_item_id)
     return idx_list, text_list
 
 
-def get_text_data_loader(data_path, batch_size):
+def get_text_data_loader(data_path, batch_size, item2id):
     hist_idxes, history = get_history_text(os.path.join(data_path, 'user.klg'))
     print('chatgpt.hist 1', history[1], 'hist len', len(history))
-    item_idxes, items = get_item_text(os.path.join(data_path, 'item.klg'))
+    item_idxes, items = get_item_text(os.path.join(data_path, 'item.klg'), no_interaction_item_id=item2id['no_interaction_item'])
     print('chatgpt.item 1', items[1], 'item len', len(items))
     hist_idxes_cs, history_cs = get_history_text(os.path.join(data_path, 'user.klg'), cold_start=True)
     history_loader = DataLoader(history, batch_size, shuffle=False)
@@ -101,7 +106,11 @@ def inference(model, tokenizer, dataloader, model_name, aggregate_type):
 
 
 def main(knowledge_path, data_path, model_name, batch_size, aggregate_type):
-    hist_loader, hist_idxes, hist_cs_loader, hist_idxes_cs, item_loader, item_idxes = get_text_data_loader(knowledge_path, batch_size)
+    """
+    Main function to encode the knowledge and save the results.
+    """
+    datamaps = load_json(os.path.join(data_path, 'datamaps.json'))
+    hist_loader, hist_idxes, hist_cs_loader, hist_idxes_cs, item_loader, item_idxes = get_text_data_loader(knowledge_path, batch_size, item2id=datamaps['item2id'])
 
     if model_name == 'chatglm':
         checkpoint = '../../llm/chatglm-6b' if os.path.exists('../../llm/chatglm-6b') else 'chatglm-6b'

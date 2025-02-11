@@ -2,15 +2,16 @@ import torch
 import torch.utils.data as Data
 import pickle
 from utils import load_json, load_pickle
+import random
 
 
 class AmzDataset(Data.Dataset):
-    def __init__(self, data_path, set='train', task='ctr', max_hist_len=10, augment=False, aug_prefix=None, user_cold_start=False):
+    def __init__(self, data_path, set_name='train', task='ctr', max_hist_len=10, augment=False, aug_prefix=None, user_cold_start=False, cold_start_ratio=0.0, cold_start_n_interact=1):
         self.task = task
         self.max_hist_len = max_hist_len
         self.augment = augment
-        self.set = set
-        self.data = load_pickle(data_path + f'/{task}.{set}')
+        self.set = set_name
+        self.data = load_pickle(data_path + f'/{task}.{set_name}')
         self.stat = load_json(data_path + '/stat.json')
         self.item_num = self.stat['item_num']
         self.attr_num = self.stat['attribute_num']
@@ -24,14 +25,23 @@ class AmzDataset(Data.Dataset):
         self.item2attribution = load_json(data_path + '/item2attributes.json')
         datamaps = load_json(data_path + '/datamaps.json')
         self.id2item = datamaps['id2item']
+        self.item2id = datamaps['item2id']
         self.id2user = datamaps['id2user']
+        self.cold_start_ratio = cold_start_ratio
+        self.user_cold_start = user_cold_start
+        self.interactions_left = cold_start_n_interact
+        self.user_ids = list(self.sequential_data.keys())
+        # Randomly select users for cold start based on the ratio
+        self.cold_start_users = set(random.sample(self.user_ids, int(len(self.user_ids) * self.cold_start_ratio)))
         if augment:
-            if user_cold_start:
-                self.hist_aug_data = load_json(data_path + f'/{aug_prefix}_augment.hist')
-            else:
-                self.hist_aug_data = load_json(data_path + f'/{aug_prefix}_augment_cs.hist')
+            # Load augmentation data
             self.item_aug_data = load_json(data_path + f'/{aug_prefix}_augment.item')
-            # print('item key', list(self.item_aug_data.keys())[:6], len(self.item_aug_data), self.item_num)
+            self.hist_aug_data = load_json(data_path + f'/{aug_prefix}_augment.hist')
+            if user_cold_start:
+                self.hist_aug_data_cs = load_json(data_path + f'/{aug_prefix}_augment_cs.hist')
+                # Create a blended hist_aug_data
+                for user_id in self.cold_start_users:
+                    self.hist_aug_data[user_id] = self.hist_aug_data_cs[user_id]
 
     def __len__(self):
         return self.length
@@ -47,6 +57,15 @@ class AmzDataset(Data.Dataset):
             hist_item_seq = item_seq[max(0, seq_idx - self.max_hist_len): seq_idx]
             hist_rating_seq = rating_seq[max(0, seq_idx - self.max_hist_len): seq_idx]
             hist_attri_seq = [self.item2attribution[str(idx)] for idx in hist_item_seq]
+
+            # Modify history for cold start users
+            if self.user_cold_start and str(uid) in self.cold_start_users:
+                no_interaction_id = self.item2id['no_interaction_item']
+                num_to_replace = max(0, len(hist_item_seq) - self.interactions_left)
+                hist_item_seq[:num_to_replace] = [no_interaction_id] * num_to_replace
+                hist_rating_seq[:num_to_replace] = [0] * num_to_replace
+                hist_attri_seq[:num_to_replace] = [self.item2attribution[str(no_interaction_id)]] * num_to_replace
+
             out_dict = {
                 'iid': torch.tensor(iid).long(),
                 'aid': torch.tensor(attri_id).long(),

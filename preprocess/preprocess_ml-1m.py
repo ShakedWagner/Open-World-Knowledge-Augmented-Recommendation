@@ -100,6 +100,12 @@ def get_attribute_ml(meta_infos, datamaps, user_infos):
             new_meta[iid].append(cate)
         if len(new_meta[iid]) > 2:
             print(new_meta[iid], info['categories'])
+    
+    # Add no interaction item with default attributes
+    no_interaction_item_id = datamaps['item2id']['no_interaction_item']
+    new_meta['no_interaction_item'] = ['default_category']
+
+
     # mapping
     attribute2id = {}
     id2attribute = {}
@@ -107,7 +113,7 @@ def get_attribute_ml(meta_infos, datamaps, user_infos):
     attribute_id = 1
     items2attributes = {}
     attribute_lens = []
-    itemid2title = {}
+    itemid2title = {no_interaction_item_id: 'No Interaction Item'}
 
     for iid, attributes in new_meta.items():
         item_id = datamaps['item2id'][iid]
@@ -120,7 +126,8 @@ def get_attribute_ml(meta_infos, datamaps, user_infos):
             attributeid2num[attribute2id[attribute]] += 1
             items2attributes[item_id].append(attribute2id[attribute])
         attribute_lens.append(len(items2attributes[item_id]))
-        itemid2title[item_id] = meta_infos[iid]['title']
+        if item_id not in itemid2title.keys():
+            itemid2title[item_id] = meta_infos[iid]['title']
 
 
     print(f'before delete, attribute num:{len(attribute2id)}')
@@ -214,6 +221,7 @@ def id_map(user_items):  # user_items dict
     lm_hist_idx = {}
     random_user_list = list(user_items.keys())
     random.shuffle(random_user_list)
+
     for user in random_user_list:
         items = user_items[user]
         if user not in user2id:
@@ -232,13 +240,19 @@ def id_map(user_items):  # user_items dict
         uid = user2id[user]
         lm_hist_idx[uid] = min((len(iids) + 1) // 2, lm_hist_max)
         final_data[uid] = [iids, ratings]
+
+    # Add a no interaction item for padding as the last item
+    no_interaction_item_id = item_id
+    item2id['no_interaction_item'] = no_interaction_item_id
+    id2item[no_interaction_item_id] = 'no_interaction_item'
+
     data_maps = {
         'user2id': user2id,
         'item2id': item2id,
         'id2user': id2user,
         'id2item': id2item,
     }
-    return final_data, user_id - 1, item_id - 1, data_maps, lm_hist_idx
+    return final_data, user_id - 1, item_id, data_maps, lm_hist_idx
 
 
 def update_data(user_items, item_diff, id2item):
