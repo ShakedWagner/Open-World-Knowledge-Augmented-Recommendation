@@ -12,6 +12,9 @@ device = 'cuda'
 
 
 def load_data(path):
+    """
+    Load the data from the path.
+    """
     res = []
     with open(path, 'r', encoding='utf-8') as f:
         data = json.load(f)
@@ -21,6 +24,9 @@ def load_data(path):
 
 
 def get_history_text(data_path, cold_start=False):
+    """
+    Get the history text from the data path.
+    """
     raw_data = load_data(data_path)
     idx_list, hist_text = [], []
     for piece in raw_data:
@@ -35,15 +41,6 @@ def get_history_text(data_path, cold_start=False):
         idx_list.append(idx)
     return idx_list, hist_text
 
-# def get_history_text(data_path):
-#     raw_data = load_data(data_path)
-#     idx_list, hist_text = [], []
-#     for piece in raw_data:
-#         idx, prompt, answer = piece
-#         pure_hist = prompt[::-1].split(';', 1)[-1][::-1]
-#         hist_text.append(pure_hist + '. ' + answer)
-#         idx_list.append(idx)
-#     return idx_list, hist_text
 
 def get_item_text(data_path, no_interaction_item_id):
     """
@@ -61,6 +58,9 @@ def get_item_text(data_path, no_interaction_item_id):
 
 
 def get_text_data_loader(data_path, batch_size, item2id):
+    """
+    Get the dataloader for the text data.
+    """
     hist_idxes, history = get_history_text(os.path.join(data_path, 'user.klg'))
     print('chatgpt.hist 1', history[1], 'hist len', len(history))
     item_idxes, items = get_item_text(os.path.join(data_path, 'item.klg'), no_interaction_item_id=item2id['no_interaction_item'])
@@ -83,6 +83,9 @@ def remap_item(item_idxes, item_vec):
 
 
 def inference(model, tokenizer, dataloader, model_name, aggregate_type):
+    """
+    Encode the text using the model.
+    """
     pred_list = []
     model.eval()
     with torch.no_grad():
@@ -108,8 +111,11 @@ def inference(model, tokenizer, dataloader, model_name, aggregate_type):
 def main(knowledge_path, data_path, model_name, batch_size, aggregate_type):
     """
     Main function to encode the knowledge and save the results.
+    Load --> encode --> map --> save
     """
+    # load datamaps
     datamaps = load_json(os.path.join(data_path, 'datamaps.json'))
+    # get dataloader
     hist_loader, hist_idxes, hist_cs_loader, hist_idxes_cs, item_loader, item_idxes = get_text_data_loader(knowledge_path, batch_size, item2id=datamaps['item2id'])
 
     if model_name == 'chatglm':
@@ -121,17 +127,21 @@ def main(knowledge_path, data_path, model_name, batch_size, aggregate_type):
     else:
         raise NotImplementedError
 
+    # load model
     torch.cuda.empty_cache()
     tokenizer = AutoTokenizer.from_pretrained(checkpoint,  trust_remote_code=True)
     model = AutoModel.from_pretrained(checkpoint,  trust_remote_code=True).half().cuda()
 
+    # encode item and history   
     item_vec = inference(model, tokenizer, item_loader, model_name, aggregate_type)
     hist_vec = inference(model, tokenizer, hist_loader, model_name, aggregate_type)
     hist_cs_vec = inference(model, tokenizer, hist_cs_loader, model_name, aggregate_type)
+    # remap item and history indexes
     item_vec_dict = remap_item(item_idxes, item_vec)
     hist_vec_dict = remap_item(hist_idxes, hist_vec)
     hist_cs_vec_dict = remap_item(hist_idxes_cs, hist_cs_vec)
 
+    # save item and history
     save_json(item_vec_dict, os.path.join(data_path, '{}_{}_augment.item'.format(model_name, aggregate_type)))
     save_json(hist_vec_dict, os.path.join(data_path, '{}_{}_augment.hist'.format(model_name, aggregate_type)))
     save_json(hist_cs_vec_dict, os.path.join(data_path, '{}_{}_augment_cs.hist'.format(model_name, aggregate_type)))
@@ -146,8 +156,7 @@ def main(knowledge_path, data_path, model_name, batch_size, aggregate_type):
 
 
 if __name__ == '__main__':
-    DATA_DIR = '/nvcr/stor/fast/afeldman/data/tests/kar_data/'
-    # DATA_SET_NAME = 'amz'
+    DATA_DIR = '/path/to/data/'
     DATA_SET_NAME = 'ml-1m'
     KLG_PATH = os.path.join(DATA_DIR, DATA_SET_NAME, 'knowledge')
     DATA_PATH = os.path.join(DATA_DIR, DATA_SET_NAME, 'proc_data')

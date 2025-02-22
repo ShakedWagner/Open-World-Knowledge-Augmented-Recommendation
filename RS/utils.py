@@ -111,6 +111,9 @@ def correct_title(title):
 
 
 def weight_init(m):
+    """
+    Initialize the weights of the model.
+    """
     if isinstance(m, nn.Linear):
         nn.init.xavier_normal_(m.weight)
         if m.bias is not None:

@@ -16,13 +16,13 @@ from datetime import date
 from string import ascii_letters, digits, punctuation, whitespace
 from pre_utils import set_seed, parse, add_comma, save_json, correct_title
 
-lm_hist_max = 30
-train_ratio = 0.9
-rating_score = 0.0  # rating score smaller than this score would be deleted
-# user 60-core item 40-core
-user_core = 0
-item_core = 0
-attribute_core = 0
+LM_HIST_MAX = 30
+TRAIN_RATIO = 0.9 # train+val to test split
+VALIDATION_RATIO = 0.1 # train to validation split
+RATING_SCORE = 0.0  # rating score smaller than this score would be deleted
+USER_CORE = 0
+ITEM_CORE = 0
+ATTRIBUTE_CORE = 0
 
 
 def ml_1m(data_file, rating_score):
@@ -238,7 +238,7 @@ def id_map(user_items):  # user_items dict
             iids.append(item2id[item])
             ratings.append(rating)
         uid = user2id[user]
-        lm_hist_idx[uid] = min((len(iids) + 1) // 2, lm_hist_max)
+        lm_hist_idx[uid] = min((len(iids) + 1) // 2, LM_HIST_MAX)
         final_data[uid] = [iids, ratings]
 
     # Add a no interaction item for padding as the last item
@@ -269,7 +269,7 @@ def update_data(user_items, item_diff, id2item):
                 new_idds.append(id)
                 new_ratings.append(rating)
         new_data[user] = [new_idds, new_ratings]
-        lm_hist_idx[user] = min((len(iids) + 1) // 2, lm_hist_max)
+        lm_hist_idx[user] = min((len(iids) + 1) // 2, LM_HIST_MAX)
         # item_num += len(new_idds)
     item_num = len(id2item) - len(item_diff)
     return new_data, item_num, lm_hist_idx
@@ -281,17 +281,17 @@ def preprocess(data_file, meta_file, user_file, processed_dir, data_type='ml-1m'
     """
     assert data_type in {'ml-1m'}
 
-    datas = ml_1m(data_file, rating_score=rating_score)
+    datas = ml_1m(data_file, rating_score=RATING_SCORE)
 
     user_items = get_interaction(datas)
-    print(f'{data_file} Raw data has been processed! Lower than {rating_score} are deleted!')
+    print(f'{data_file} Raw data has been processed! Lower than {RATING_SCORE} are deleted!')
     # raw_id user: [item1, item2, item3...]
-    if item_core > 0 or user_core > 0:
-        user_items = filter_Kcore(user_items, user_core=user_core, item_core=item_core)
-        print(f'User {user_core}-core complete! Item {item_core}-core complete!')
-
-    user_count, item_count, rating_count, _ = check_Kcore(user_items, user_core=user_core,
-                                                          item_core=item_core)  ## user_count: number of interaction for each user
+    if ITEM_CORE > 0 or USER_CORE > 0:
+        user_items = filter_Kcore(user_items, user_core=USER_CORE, item_core=ITEM_CORE)
+        print(f'User {USER_CORE}-core complete! Item {ITEM_CORE}-core complete!')
+    # check K-core, if the user or item has less than USER_CORE or ITEM_CORE interactions, delete the user or item
+    user_count, item_count, rating_count, _ = check_Kcore(user_items, user_core=USER_CORE,
+                                                          item_core=ITEM_CORE)  ## user_count: number of interaction for each user
     user_items, user_num, item_num, data_maps, lm_hist_idx = id_map(user_items)
 
     print('get meta infos')
@@ -326,13 +326,20 @@ def preprocess(data_file, meta_file, user_file, processed_dir, data_type='ml-1m'
     print(rating_count, (rating_count[4] + rating_count[5]) / sum(list(rating_count.values())))
     print((rating_count[5]) / sum(list(rating_count.values())))
 
-    # train/test split
+    # train/test/validation split
     user_set = list(user_items.keys())
     random.shuffle(user_set)
-    train_user = user_set[:int(len(user_set) * train_ratio)]
-    test_user = user_set[int(len(user_set) * train_ratio):]
+    train_user = user_set[:int(len(user_set) * TRAIN_RATIO)]
+    test_user = user_set[int(len(user_set) * TRAIN_RATIO):]
+    
+    # Split the training set into train and validation
+    validation_user_count = int(len(train_user) * VALIDATION_RATIO)
+    validation_user = train_user[:validation_user_count]
+    train_user = train_user[validation_user_count:]
+    
     train_test_split = {
         'train': train_user,
+        'validation': validation_user,
         'test': test_user,
         'lm_hist_idx': lm_hist_idx
     }
@@ -386,7 +393,7 @@ def preprocess(data_file, meta_file, user_file, processed_dir, data_type='ml-1m'
 if __name__ == '__main__':
     set_seed(1234)
     
-    DATA_DIR = '/nvcr/stor/fast/afeldman/data/tests/kar_data/'
+    DATA_DIR = '/path/to/data/'
     DATA_SET_NAME = 'ml-1m'
     DATA_FILE = os.path.join(DATA_DIR, DATA_SET_NAME + '/raw_data/ratings.dat')
     META_FILE = os.path.join(DATA_DIR, DATA_SET_NAME + '/raw_data/movies.dat')

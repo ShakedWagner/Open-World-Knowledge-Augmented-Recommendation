@@ -101,7 +101,6 @@ def correct_title(title):
     except:
         return title
     spl_list = pure_title.strip().split(',')
-    # spl_list = [word.strip() for word in spl_list]
     last_word = spl_list[-1].strip().lower()
     if last_word == 'the' or last_word == 'a':
         tmp = ','.join(spl_list[:-1])

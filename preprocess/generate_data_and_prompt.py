@@ -1,20 +1,11 @@
-import json
 import os
-import pickle
 from datetime import date
 import random
 from collections import defaultdict
-import csv
 from pre_utils import load_json, save_json, save_pickle, GENDER_MAPPING, \
     AGE_MAPPING, OCCUPATION_MAPPING
 
-rerank_item_from_hist = 4
-rerank_hist_len = 10
-rerank_list_len = 10
-ctr_hist_len = 10
-
-
-def generate_ctr_data(sequence_data, lm_hist_idx, uid_set):
+def generate_ctr_data(sequence_data, lm_hist_idx, uid_set, rating_threshold):
     """
     Generate CTR data for training and testing. Generate binary labels for each interaction 0 if rating is lower than rating_threshold, 1 otherwise.
     """
@@ -30,29 +21,6 @@ def generate_ctr_data(sequence_data, lm_hist_idx, uid_set):
             total_label.append(label)
     print('user num', len(uid_set), 'data num', len(full_data), 'pos ratio',
           sum(total_label) / len(total_label))
-    print(full_data[:5])
-    return full_data
-
-
-def generate_rerank_data(sequence_data, lm_hist_idx, uid_set, item_set):
-    """
-    Generate reranking data for training and testing.
-    """
-    full_data = []
-    for uid in uid_set:
-        start_idx = lm_hist_idx[str(uid)]
-        item_seq, rating_seq = sequence_data[str(uid)]
-        idx = start_idx
-        seq_len = len(item_seq)
-        while idx < seq_len:
-            end_idx = min(idx + rerank_item_from_hist, seq_len)
-            chosen_iid = item_seq[idx:end_idx]
-            neg_sample_num = rerank_list_len - len(chosen_iid)
-            neg_sample = random.sample(item_set, neg_sample_num)
-            candidates = chosen_iid + neg_sample
-            full_data.append([uid, idx, candidates, rating_seq[idx:end_idx]])
-            idx = end_idx
-    print('user num', len(uid_set), 'data num', len(full_data))
     print(full_data[:5])
     return full_data
 
@@ -137,50 +105,43 @@ def generate_item_prompt(item2attribute, datamap, dataset_name):
 
 if __name__ == '__main__':
     random.seed(12345)
-    BASE_DIR = r'/nvcr/stor/fast/afeldman/data/tests/'
-    DATA_DIR = os.path.join(BASE_DIR, 'kar_data')
+    BASE_DIR = r''
+    DATA_DIR = os.path.join(BASE_DIR, 'data')
     DATA_SET_NAME = 'ml-1m'
-    if DATA_SET_NAME == 'ml-1m':
-        rating_threshold = 3
-    else:
-        rating_threshold = 4
+    rating_threshold = 3
     PROCESSED_DIR = os.path.join(DATA_DIR, DATA_SET_NAME, 'proc_data')
     SEQUENCE_PATH = os.path.join(PROCESSED_DIR, 'sequential_data.json')
     ITEM2ATTRIBUTE_PATH = os.path.join(PROCESSED_DIR, 'item2attributes.json')
     DATAMAP_PATH = os.path.join(PROCESSED_DIR, 'datamaps.json')
     SPLIT_PATH = os.path.join(PROCESSED_DIR, 'train_test_split.json')
-
+    # load interactions in a list of [uid, iid, rating]
     sequence_data = load_json(SEQUENCE_PATH)
     train_test_split = load_json(SPLIT_PATH)
+    # load item2attribute in a dict of {iid: [attribute1, attribute2, ...]}
     item2attribute = load_json(ITEM2ATTRIBUTE_PATH)
     item_set = list(map(int, item2attribute.keys()))
     print('final loading data')
 
     print('generating ctr train dataset')
     train_ctr = generate_ctr_data(sequence_data, train_test_split['lm_hist_idx'],
-                                  train_test_split['train'])
+                                  train_test_split['train'], rating_threshold)
+    print('generating ctr validation dataset')
+    validation_ctr = generate_ctr_data(sequence_data, train_test_split['lm_hist_idx'],
+                                       train_test_split['validation'], rating_threshold)
     print('generating ctr test dataset')
     test_ctr = generate_ctr_data(sequence_data, train_test_split['lm_hist_idx'],
-                                 train_test_split['test'])
+                                 train_test_split['test'], rating_threshold)
     print('save ctr data')
     save_pickle(train_ctr, os.path.join(PROCESSED_DIR, 'ctr.train'))
+    save_pickle(validation_ctr, os.path.join(PROCESSED_DIR, 'ctr.validation'))
     save_pickle(test_ctr, os.path.join(PROCESSED_DIR, 'ctr.test'))
 
-    print('generating reranking train dataset')
-    train_rerank = generate_rerank_data(sequence_data, train_test_split['lm_hist_idx'],
-                                        train_test_split['train'], item_set)
-    print('generating reranking test dataset')
-    test_rerank = generate_rerank_data(sequence_data, train_test_split['lm_hist_idx'],
-                                       train_test_split['test'], item_set)
-    print('save reranking data')
-    save_pickle(train_rerank, os.path.join(PROCESSED_DIR, 'rerank.train'))
-    save_pickle(test_rerank, os.path.join(PROCESSED_DIR, 'rerank.test'))
-    train_rerank, test_rerank = None, None
+   
 
     datamap = load_json(DATAMAP_PATH)
-
+    # write stats to json
     statis = {
-        'rerank_list_len': rerank_list_len,
+        
         'attribute_ft_num': datamap['attribute_ft_num'],
         'rating_threshold': rating_threshold,
         'item_num': len(datamap['id2item']),
