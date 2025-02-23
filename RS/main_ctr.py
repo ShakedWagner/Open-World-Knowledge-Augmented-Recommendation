@@ -16,13 +16,20 @@ import torch.utils.data as Data
 # 3.sklearn
 from sklearn.metrics import roc_auc_score, log_loss
 
-from utils import load_parse_from_json, setup_seed, load_data, weight_init, str2list
-from models import DeepInterestNet, DCN, DeepFM, DIEN, xDeepFM, FiBiNet, FiGNN, AutoInt
-from dataset import AmzDataset
+from utils import load_parse_from_json, setup_seed, weight_init, str2list
+from models import DeepInterestNet
+from dataset import KARDataset
 from optimization import AdamW, get_cosine_schedule_with_warmup, get_constant_schedule_with_warmup
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix
+import pandas as pd
 
 
-def eval(model, test_loader):
+def eval(model, test_loader, exp_name=None):
+    """
+    Evaluate the model using AUC and Log Loss
+    """
     model.eval()
     losses = []
     preds = []
@@ -39,47 +46,77 @@ def eval(model, test_loader):
     eval_time = time.time() - t
     auc = roc_auc_score(y_true=labels, y_score=preds)
     ll = log_loss(y_true=labels, y_pred=preds)
+    # Create confusion matrix
+    if exp_name is not None:
+        # Convert predictions to binary values using 0.5 threshold
+        binary_preds = [1 if p[0] >= 0.5 else 0 for p in preds]
+
+        # Calculate confusion matrix
+        cm = confusion_matrix(labels, binary_preds)
+        
+        # Plot confusion matrix
+        plt.figure(figsize=(8,6))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+        plt.title(f'Confusion Matrix for {exp_name}')
+        plt.ylabel('True Label')
+        plt.xlabel('Predicted Label')
+        plt.savefig(f'confusion_matrix_{exp_name}.png')
+        plt.close()
+    # Save metrics to experiments.csv
+
+    
+        # Create experiments dataframe with results
+        results_df = pd.DataFrame({
+            'experiment': [exp_name],
+            'auc': [auc],
+            'log_loss': [ll]
+        })
+        
+        # Check if experiments.csv exists
+        csv_path = 'experiments.csv'
+        if os.path.exists(csv_path):
+            # Load existing CSV and append new results
+            existing_df = pd.read_csv(csv_path)
+            updated_df = pd.concat([existing_df, results_df], ignore_index=True)
+        else:
+            # Create new CSV with results
+            updated_df = results_df
+            
+        # Save updated results
+        updated_df.to_csv(csv_path, index=False)
+        
     return auc, ll, np.mean(losses), eval_time
 
 
 def test(args):
+    """
+    Run the test process
+    """
     model = torch.load(args.reload_path)
-    test_set = AmzDataset(args.data_dir, 'test', args.task, args.max_hist_len, args.augment, args.aug_prefix)
+    test_set = KARDataset(args.data_dir, 'test', args.task, args.max_hist_len, args.augment, args.aug_prefix, user_cold_start=args.user_cold_start, cold_start_ratio=args.cold_start_ratio, cold_start_n_interact=args.cold_start_n_interact, cs_method=args.cs_method)
     test_loader = Data.DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False)
     print('Test data size:', len(test_set))
-    auc, ll, loss, eval_time = eval(model, test_loader)
+    auc, ll, loss, eval_time = eval(model, test_loader, 'new_cs_' + args.cs_method + '_max_hist_' + str(args.max_hist_len))
     print("test loss: %.5f, test time: %.5f, auc: %.5f, logloss: %.5f" % (loss, eval_time, auc, ll))
+    return auc, ll, loss, eval_time
 
 
 def load_model(args, dataset):
-    algo = args.algo
+    """
+    Load the model
+    """
     device = args.device
-    if algo == 'DIN':
-        model = DeepInterestNet(args, dataset).to(device)
-    elif algo == 'DIEN':
-        model = DIEN(args, dataset).to(device)
-    elif algo == 'DCNv1':
-        model = DCN(args, 'v1', dataset).to(device)
-    elif algo == 'DCNv2':
-        model = DCN(args, 'v2', dataset).to(device)
-    elif algo == 'DeepFM':
-        model = DeepFM(args, dataset).to(device)
-    elif algo == 'xDeepFM':
-        model = xDeepFM(args, dataset).to(device)
-    elif algo == 'AutoInt':
-        model = AutoInt(args, dataset).to(device)
-    elif algo == 'FiBiNet':
-        model = FiBiNet(args, dataset).to(device)
-    elif algo == 'FiGNN':
-        model = FiGNN(args, dataset).to(device)
-    else:
-        print('No Such Model')
-        exit()
+
+    model = DeepInterestNet(args, dataset).to(device)
+
     model.apply(weight_init)
     return model
 
 
 def get_optimizer(args, model, train_data_num):
+    """
+    Get the optimizer for the model
+    """
     no_decay = ['bias', 'LayerNorm.weight']
     # no_decay = []
     named_params = [(k, v) for k, v in model.named_parameters()]
@@ -110,23 +147,37 @@ def get_optimizer(args, model, train_data_num):
 
 
 def train(args):
-    train_set = AmzDataset(args.data_dir, 'train', args.task, args.max_hist_len, args.augment, args.aug_prefix)
-    test_set = AmzDataset(args.data_dir, 'test', args.task, args.max_hist_len, args.augment, args.aug_prefix)
+    """
+    Train the model
+    """
+    train_set = KARDataset(args.data_dir, 'train', args.task, args.max_hist_len, args.augment, args.aug_prefix, user_cold_start=args.user_cold_start, cold_start_ratio=args.cold_start_ratio, cold_start_n_interact=args.cold_start_n_interact)
+    val_set = KARDataset(args.data_dir, 'validation', args.task, args.max_hist_len, args.augment, args.aug_prefix)
     train_loader = Data.DataLoader(dataset=train_set, batch_size=args.batch_size, shuffle=True)
-    test_loader = Data.DataLoader(dataset=test_set, batch_size=args.batch_size, shuffle=False)
-    print('Train data size:', len(train_set), 'Test data size:', len(test_set))
+    val_loader = Data.DataLoader(dataset=val_set, batch_size=args.batch_size, shuffle=False)
+    print('Train data size:', len(train_set), 'Test data size:', len(val_set))
 
-    model = load_model(args, test_set)
+    model = load_model(args, val_set)
 
     optimizer, scheduler = get_optimizer(args, model, len(train_set))
 
     save_path = os.path.join(args.save_dir, args.algo + '.pt')
+    plot_path = os.path.join(args.save_dir, args.plot_path)
+    print(args.save_dir)
+    print(plot_path)
     if not os.path.exists(args.save_dir):
         os.makedirs(args.save_dir)
-
+    if not os.path.exists(os.path.dirname(plot_path)):
+        os.makedirs(os.path.dirname(plot_path))
     best_auc = 0
     global_step = 0
     patience = 0
+
+    # Lists to store metrics for plotting
+    train_losses = []
+    eval_aucs = []
+    eval_lls = []
+    eval_losses = []
+
     for epoch in range(args.epoch_num):
         t = time.time()
         train_loss = []
@@ -141,7 +192,14 @@ def train(args):
             train_loss.append(loss.item())
             global_step += 1
         train_time = time.time() - t
-        eval_auc, eval_ll, eval_loss, eval_time = eval(model, test_loader)
+        eval_auc, eval_ll, eval_loss, eval_time = eval(model, val_loader)
+        
+        # Store metrics
+        train_losses.append(np.mean(train_loss))
+        eval_aucs.append(eval_auc)
+        eval_lls.append(eval_ll)
+        eval_losses.append(eval_loss)
+
         print("EPOCH %d  STEP %d train loss: %.5f, train time: %.5f, test loss: %.5f, test time: %.5f, auc: %.5f, "
               "logloss: %.5f" % (epoch, global_step, np.mean(train_loss), train_time, eval_loss,
                                  eval_time, eval_auc, eval_ll))
@@ -154,6 +212,39 @@ def train(args):
             patience += 1
             if patience >= args.patience:
                 break
+
+    
+    # Plot training loss
+    plt.figure(figsize=(18, 5))
+    plt.subplot(1, 4, 1)
+    sns.lineplot(x=range(len(train_losses)), y=train_losses)
+    plt.title('Training Loss over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+
+    # Plot AUC
+    plt.subplot(1, 4, 2)
+    sns.lineplot(x=range(len(eval_aucs)), y=eval_aucs)
+    plt.title('Test AUC over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('AUC')
+
+    # Plot Log Loss
+    plt.subplot(1, 4, 3)
+    sns.lineplot(x=range(len(eval_lls)), y=eval_lls)
+    plt.title('Test Log Loss over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Log Loss')
+
+    plt.subplot(1, 4, 4)
+    sns.lineplot(x=range(len(eval_losses)), y=eval_losses)
+    plt.title('Test Loss over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Log Loss')
+
+    plt.tight_layout()
+    plt.savefig(plot_path)
+    plt.close()
 
 
 def parse_args():
@@ -182,8 +273,8 @@ def parse_args():
     parser.add_argument('--test', action='store_true', help='test mode')
     parser.add_argument('--patience', default=3, type=int, help='The patience for early stop')
 
-    parser.add_argument('--task', default='ctr', type=str, help='task, ctr or rerank')
-    parser.add_argument('--algo', default='DIN', type=str, help='model name')
+    parser.add_argument('--task', default='ctr', type=str, help='task, ctr only for the moment')
+    parser.add_argument('--algo', default='DIN', type=str, help='model name - DIN only for the moment')
     parser.add_argument('--augment', default='true', type=str, help='whether to use augment vectors')
     parser.add_argument('--aug_prefix', default='chatglm_avg', type=str, help='prefix of augment file')
     parser.add_argument('--convert_type', default='HEA', type=str, help='type of convert module')
@@ -214,7 +305,11 @@ def parse_args():
     parser.add_argument('--gnn_layer_num', default=2, type=int, help='layer num of GNN in FiGNN')
     parser.add_argument('--reuse_graph_layer', default=True, type=bool, help='whether reuse graph layer in FiGNN')
     parser.add_argument('--dien_gru', default='GRU', type=str, help='gru type in DIEN')
-
+    parser.add_argument('--plot_path', default='plots/training_plots.png', type=str, help='Path to save training plots')
+    parser.add_argument('--user_cold_start', default=False, type=bool, help='whether to test user cold start scenario')
+    parser.add_argument('--cold_start_ratio', default=0.0, type=float, help='ratio of cold start users')
+    parser.add_argument('--cold_start_n_interact', default=1, type=int, help='number of interactions left for cold start users')
+    parser.add_argument('--cs_method', default='demographic', type=str, help='method to generate cold start users user history augmented vectors')
     args, _ = parser.parse_known_args()
     args.augment = True if args.augment.lower() == 'true' else False
 
@@ -231,5 +326,9 @@ if __name__ == '__main__':
     setup_seed(args.seed)
 
     print('parameters', args)
-    train(args)
+    if args.test:
+        auc, ll, loss, eval_time = test(args)
+    else:
+        train(args)
+
 

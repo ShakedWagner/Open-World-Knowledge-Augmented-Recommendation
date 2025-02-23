@@ -16,16 +16,20 @@ from datetime import date
 from string import ascii_letters, digits, punctuation, whitespace
 from pre_utils import set_seed, parse, add_comma, save_json, correct_title
 
-lm_hist_max = 30
-train_ratio = 0.9
-rating_score = 0.0  # rating score smaller than this score would be deleted
-# user 60-core item 40-core
-user_core = 0
-item_core = 0
-attribute_core = 0
+LM_HIST_MAX = 30
+TRAIN_RATIO = 0.9 # train+val to test split
+VALIDATION_RATIO = 0.1 # train to validation split
+RATING_SCORE = 0.0  # rating score smaller than this score would be deleted
+USER_CORE = 0
+ITEM_CORE = 0
+ATTRIBUTE_CORE = 0
 
 
 def ml_1m(data_file, rating_score):
+    """
+    Read the ml-1m dataset and return a list of tuples, where each tuple contains a user ID, an item ID, a timestamp, and a rating.
+    Lower rating than rating_score are ignored.
+    """
     datas = []
     all_num, wo_rating_num = 0, 0
     with open(data_file, 'r') as r:
@@ -43,6 +47,9 @@ def ml_1m(data_file, rating_score):
 
 
 def ml_1m_user(data_file):
+    """
+    Read the ml-1m user file and return a dictionary, where each key is a user ID and each value is a list containing the user's gender, age, and occupation.
+    """
     user_info = {}
     with open(data_file, 'r') as r:
         lines = r.readlines()
@@ -53,6 +60,9 @@ def ml_1m_user(data_file):
 
 
 def ml_1m_meta(meta_file, data_maps):  # return the metadata of products
+    """
+    Read the ml-1m metadata file and return a dictionary, where each key is an item ID and each value is a dictionary containing the item's categories and title.
+    """
     datas = {}
     item_asins = set(data_maps['item2id'].keys())
     with open(meta_file, 'r', encoding='latin-1') as r:
@@ -73,6 +83,9 @@ def ml_1m_meta(meta_file, data_maps):  # return the metadata of products
 
 # categories and brand is all attribute
 def get_attribute_ml(meta_infos, datamaps, user_infos):
+    """
+    Extract attributes from the metadata and return the number of attributes, the average length of attributes per item, and the updated data maps.
+    """
     attributes = defaultdict(int)
     for iid, info in meta_infos.items():
         for cate in info['categories']:
@@ -87,6 +100,12 @@ def get_attribute_ml(meta_infos, datamaps, user_infos):
             new_meta[iid].append(cate)
         if len(new_meta[iid]) > 2:
             print(new_meta[iid], info['categories'])
+    
+    # Add no interaction item with default attributes
+    no_interaction_item_id = datamaps['item2id']['no_interaction_item']
+    new_meta['no_interaction_item'] = ['default_category']
+
+
     # mapping
     attribute2id = {}
     id2attribute = {}
@@ -94,7 +113,7 @@ def get_attribute_ml(meta_infos, datamaps, user_infos):
     attribute_id = 1
     items2attributes = {}
     attribute_lens = []
-    itemid2title = {}
+    itemid2title = {no_interaction_item_id: 'No Interaction Item'}
 
     for iid, attributes in new_meta.items():
         item_id = datamaps['item2id'][iid]
@@ -107,7 +126,8 @@ def get_attribute_ml(meta_infos, datamaps, user_infos):
             attributeid2num[attribute2id[attribute]] += 1
             items2attributes[item_id].append(attribute2id[attribute])
         attribute_lens.append(len(items2attributes[item_id]))
-        itemid2title[item_id] = meta_infos[iid]['title']
+        if item_id not in itemid2title.keys():
+            itemid2title[item_id] = meta_infos[iid]['title']
 
 
     print(f'before delete, attribute num:{len(attribute2id)}')
@@ -125,6 +145,9 @@ def get_attribute_ml(meta_infos, datamaps, user_infos):
 
 
 def get_interaction(datas):  # return a dict, key is user and value is a list of items
+    """
+    Extract user interactions from the dataset and return a dictionary, where each key is a user ID and each value is a list of lists where each inner list represent an interaction, containing the item ID and rating, the interactions are sorted by time.
+    """ 
     user_seq = {}
     for data in datas:
         user, item, time, rating = data
@@ -138,13 +161,16 @@ def get_interaction(datas):  # return a dict, key is user and value is a list of
         item_time.sort(key=lambda x: x[1])  # sorting by time
         items = []
         for t in item_time:
-            items.append([t[0], t[2]])
+            items.append([t[0], t[2]]) # item, rating
         user_seq[user] = items
     return user_seq
 
 
 # K-core user_core item_core
 def check_Kcore(user_items, user_core, item_core):
+    """
+    Check if the user and item have K-core properties and return the user and item counts, the rating counts, and a boolean indicating if the K-core properties are satisfied.
+    """
     user_count = defaultdict(int)
     item_count = defaultdict(int)
     rating_count = defaultdict(int)
@@ -154,10 +180,10 @@ def check_Kcore(user_items, user_core, item_core):
             item_count[item] += 1
             rating_count[rating] += 1
 
-    for user, num in user_count.items():
+    for user, num in user_count.items(): # check if user has less than user_core interactions
         if num < user_core:
             return user_count, item_count, rating_count, False
-    for item, num in item_count.items():
+    for item, num in item_count.items(): # check if item has less than item_core interactions
         if num < item_core:
             return user_count, item_count, rating_count, False
     return user_count, item_count, rating_count, True  # guarantee Kcore
@@ -165,6 +191,9 @@ def check_Kcore(user_items, user_core, item_core):
 
 # filter K-core
 def filter_Kcore(user_items, user_core, item_core):
+    """
+    Filter out users and items that do not have K-core properties and return the updated user interactions.
+    """
     user_count, item_count, rating_count, isKcore = check_Kcore(user_items, user_core, item_core)
     while not isKcore:
         for user, num in user_count.items():
@@ -179,6 +208,9 @@ def filter_Kcore(user_items, user_core, item_core):
 
 
 def id_map(user_items):  # user_items dict
+    """
+    Map user and item IDs to sequential IDs and return the final data, the number of users, the number of items, the data maps, and the history length index for each user.
+    """
     user2id = {}  # raw 2 uid
     item2id = {}  # raw 2 iid
     id2user = {}  # uid 2 raw
@@ -189,6 +221,7 @@ def id_map(user_items):  # user_items dict
     lm_hist_idx = {}
     random_user_list = list(user_items.keys())
     random.shuffle(random_user_list)
+
     for user in random_user_list:
         items = user_items[user]
         if user not in user2id:
@@ -205,18 +238,27 @@ def id_map(user_items):  # user_items dict
             iids.append(item2id[item])
             ratings.append(rating)
         uid = user2id[user]
-        lm_hist_idx[uid] = min((len(iids) + 1) // 2, lm_hist_max)
+        lm_hist_idx[uid] = min((len(iids) + 1) // 2, LM_HIST_MAX)
         final_data[uid] = [iids, ratings]
+
+    # Add a no interaction item for padding as the last item
+    no_interaction_item_id = item_id
+    item2id['no_interaction_item'] = no_interaction_item_id
+    id2item[no_interaction_item_id] = 'no_interaction_item'
+
     data_maps = {
         'user2id': user2id,
         'item2id': item2id,
         'id2user': id2user,
         'id2item': id2item,
     }
-    return final_data, user_id - 1, item_id - 1, data_maps, lm_hist_idx
+    return final_data, user_id - 1, item_id, data_maps, lm_hist_idx
 
 
 def update_data(user_items, item_diff, id2item):
+    """
+    Update the user interactions by removing items that are not in the metadata and return the updated user interactions, the number of items, and the history length index for each user.
+    """
     new_data = {}
     lm_hist_idx = {}
     for user, user_data in user_items.items():
@@ -227,26 +269,29 @@ def update_data(user_items, item_diff, id2item):
                 new_idds.append(id)
                 new_ratings.append(rating)
         new_data[user] = [new_idds, new_ratings]
-        lm_hist_idx[user] = min((len(iids) + 1) // 2, lm_hist_max)
+        lm_hist_idx[user] = min((len(iids) + 1) // 2, LM_HIST_MAX)
         # item_num += len(new_idds)
     item_num = len(id2item) - len(item_diff)
     return new_data, item_num, lm_hist_idx
 
 
 def preprocess(data_file, meta_file, user_file, processed_dir, data_type='ml-1m'):
+    """
+    Preprocess the ml-1m dataset and save the processed data to the specified directory.
+    """
     assert data_type in {'ml-1m'}
 
-    datas = ml_1m(data_file, rating_score=rating_score)
+    datas = ml_1m(data_file, rating_score=RATING_SCORE)
 
     user_items = get_interaction(datas)
-    print(f'{data_file} Raw data has been processed! Lower than {rating_score} are deleted!')
+    print(f'{data_file} Raw data has been processed! Lower than {RATING_SCORE} are deleted!')
     # raw_id user: [item1, item2, item3...]
-    if item_core > 0 or user_core > 0:
-        user_items = filter_Kcore(user_items, user_core=user_core, item_core=item_core)
-        print(f'User {user_core}-core complete! Item {item_core}-core complete!')
-
-    user_count, item_count, rating_count, _ = check_Kcore(user_items, user_core=user_core,
-                                                          item_core=item_core)  ## user_count: number of interaction for each user
+    if ITEM_CORE > 0 or USER_CORE > 0:
+        user_items = filter_Kcore(user_items, user_core=USER_CORE, item_core=ITEM_CORE)
+        print(f'User {USER_CORE}-core complete! Item {ITEM_CORE}-core complete!')
+    # check K-core, if the user or item has less than USER_CORE or ITEM_CORE interactions, delete the user or item
+    user_count, item_count, rating_count, _ = check_Kcore(user_items, user_core=USER_CORE,
+                                                          item_core=ITEM_CORE)  ## user_count: number of interaction for each user
     user_items, user_num, item_num, data_maps, lm_hist_idx = id_map(user_items)
 
     print('get meta infos')
@@ -281,13 +326,20 @@ def preprocess(data_file, meta_file, user_file, processed_dir, data_type='ml-1m'
     print(rating_count, (rating_count[4] + rating_count[5]) / sum(list(rating_count.values())))
     print((rating_count[5]) / sum(list(rating_count.values())))
 
-    # train/test split
+    # train/test/validation split
     user_set = list(user_items.keys())
     random.shuffle(user_set)
-    train_user = user_set[:int(len(user_set) * train_ratio)]
-    test_user = user_set[int(len(user_set) * train_ratio):]
+    train_user = user_set[:int(len(user_set) * TRAIN_RATIO)]
+    test_user = user_set[int(len(user_set) * TRAIN_RATIO):]
+    
+    # Split the training set into train and validation
+    validation_user_count = int(len(train_user) * VALIDATION_RATIO)
+    validation_user = train_user[:validation_user_count]
+    train_user = train_user[validation_user_count:]
+    
     train_test_split = {
         'train': train_user,
+        'validation': validation_user,
         'test': test_user,
         'lm_hist_idx': lm_hist_idx
     }
@@ -340,7 +392,8 @@ def preprocess(data_file, meta_file, user_file, processed_dir, data_type='ml-1m'
 
 if __name__ == '__main__':
     set_seed(1234)
-    DATA_DIR = '../data/'
+    
+    DATA_DIR = '/path/to/data/'
     DATA_SET_NAME = 'ml-1m'
     DATA_FILE = os.path.join(DATA_DIR, DATA_SET_NAME + '/raw_data/ratings.dat')
     META_FILE = os.path.join(DATA_DIR, DATA_SET_NAME + '/raw_data/movies.dat')
