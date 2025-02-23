@@ -1,4 +1,4 @@
-# Towards Open-World Recommendation with Knowledge Augmentation from Large Language Models
+# Alleviating the User Cold Start in KAR for CTR Prediction
 
 ## Requirements provided in requirements.txt
 ```
